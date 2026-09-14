@@ -21,6 +21,12 @@ export type ScoringStatus =
 
 export type EvidenceStatus = "VERIFIED" | "INFERRED" | "UNKNOWN";
 
+/** Narrative AI text that must be produced in both languages side by side. */
+export interface LocalizedText {
+  en: string;
+  de: string;
+}
+
 export interface Evidence {
   file: string;
   reason: string;
@@ -115,13 +121,22 @@ export type DimensionKey = (typeof DIMENSION_KEYS)[number];
 
 export interface DimensionScore {
   score: 1 | 2 | 3 | 4 | 5;
-  rationale: string;
+  /** One-sentence, compact read of this dimension - the "summary per scoring parameter". */
+  summary: LocalizedText;
+  /** The detailed reasoning behind the score - the "Einzelauswertung". */
+  rationale: LocalizedText;
   evidence: Evidence[];
   confidence: number; // 0.0 - 1.0
   missingInformation: string[];
 }
 
 export type DimensionScores = Record<DimensionKey, DimensionScore>;
+
+/** Raw output of AIProvider.scoreRequirement, before the deterministic DU Engine runs. */
+export interface ScoringOutput {
+  dimensions: DimensionScores;
+  overallAssessment: LocalizedText;
+}
 
 export type DuClass = "XS" | "S" | "M" | "L" | "XL" | "XXL";
 
@@ -150,7 +165,26 @@ export interface ScoringResult {
   confidence: ConfidenceAssessment | null;
   /** The final DU estimate. Null while not yet scored, on error, and withheld when confidence is LOW. */
   duResult: DuResult | null;
+  /** Cross-dimension narrative: how the 8 scores together characterize scope/complexity/risk. */
+  overallAssessment: LocalizedText | null;
   openQuestions: string[];
   errorMessage: string | null;
   scoredAt: string | null;
+}
+
+/** One row of the requirement -> DU decision history list (spec: traceable history). */
+export interface ScoringHistoryEntry {
+  id: string;
+  snapshotId: string;
+  repositoryUrl: string;
+  branch: string;
+  requirementTitle: string;
+  status: ScoringStatus;
+  duClass: DuClass | null;
+  developmentUnits: number | null;
+  price: number | null;
+  overallConfidence: number | null;
+  confidenceLevel: "HIGH" | "MEDIUM" | "LOW" | null;
+  scoredAt: string | null;
+  createdAt: string;
 }

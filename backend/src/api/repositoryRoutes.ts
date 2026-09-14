@@ -6,7 +6,8 @@ import { getAIProvider } from "../ai/getAIProvider.js";
 import { cleanupWorkingDir, cloneAndReadRepository, GitOperationError } from "../git/GitRepositoryService.js";
 import { InvalidRepositoryInputError, validateRepositoryInput } from "../git/validateRepositoryInput.js";
 import { logger } from "../logging.js";
-import { store } from "../store/InMemoryStore.js";
+import { repositoryContextCache } from "../store/RepositoryContextCache.js";
+import { store } from "../store/PostgresScoringStore.js";
 import { asyncHandler } from "./asyncHandler.js";
 
 export const repositoryRouter = Router();
@@ -37,7 +38,7 @@ repositoryRouter.post("/analyze", asyncHandler(async (req, res) => {
     profile: null,
     errorMessage: null,
   };
-  store.saveSnapshot(snapshot);
+  await store.saveSnapshot(snapshot);
 
   let workingDir: string | undefined;
   try {
@@ -45,10 +46,10 @@ repositoryRouter.post("/analyze", asyncHandler(async (req, res) => {
     workingDir = dir;
     snapshot.commitSha = commitSha;
     snapshot.status = "ANALYZING";
-    store.saveSnapshot(snapshot);
+    await store.saveSnapshot(snapshot);
 
     const context = await buildRepositoryContext(workingDir, fileTree);
-    store.saveRepositoryContext(snapshot.id, context);
+    repositoryContextCache.save(snapshot.id, context);
 
     const aiProvider = getAIProvider();
     const profile = await aiProvider.analyzeRepository(
@@ -60,7 +61,7 @@ repositoryRouter.post("/analyze", asyncHandler(async (req, res) => {
     snapshot.profile = profile;
     snapshot.status = "SNAPSHOT_CREATED";
     snapshot.analyzedAt = new Date().toISOString();
-    store.saveSnapshot(snapshot);
+    await store.saveSnapshot(snapshot);
 
     res.status(200).json(snapshot);
   } catch (err) {
@@ -72,7 +73,7 @@ repositoryRouter.post("/analyze", asyncHandler(async (req, res) => {
       branch,
       error: snapshot.errorMessage,
     });
-    store.saveSnapshot(snapshot);
+    await store.saveSnapshot(snapshot);
     res.status(200).json(snapshot);
   } finally {
     if (workingDir) {
@@ -83,14 +84,19 @@ repositoryRouter.post("/analyze", asyncHandler(async (req, res) => {
   }
 }));
 
-repositoryRouter.get("/:id", (req, res) => {
-  const snapshot = store.getSnapshot(req.params.id);
+repositoryRouter.get("/:id", asyncHandler(async (req, res) => {
+  const id = req.params.id;
+  if (!id) {
+    res.status(400).json({ error: "id is required." });
+    return;
+  }
+  const snapshot = await store.getSnapshot(id);
   if (!snapshot) {
     res.status(404).json({ error: "Repository snapshot not found." });
     return;
   }
   res.status(200).json(snapshot);
-});
+}));
 
 function describeError(err: unknown): string {
   if (err instanceof GitOperationError) return err.message;

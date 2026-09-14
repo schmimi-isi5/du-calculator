@@ -9,11 +9,11 @@
 // class, count, and price.
 
 import type {
-  DimensionScores,
   ImpactAnalysis,
   Requirement,
   RepositoryContext,
   RepositoryProfile,
+  ScoringOutput,
 } from "../domain/types.js";
 
 export interface RepositoryIdentity {
@@ -36,13 +36,18 @@ export interface AIProvider {
     context: RepositoryContext,
   ): Promise<ImpactAnalysis>;
 
-  /** Scores all eight dimensions (1-5 each) with rationale, evidence, and confidence. Never computes DU directly. */
+  /**
+   * Scores all eight dimensions (1-5 each) with a bilingual summary,
+   * bilingual detailed rationale, evidence, and confidence, plus one
+   * bilingual overall assessment synthesizing all eight. Never computes DU
+   * directly.
+   */
   scoreRequirement(
     requirement: Requirement,
     profile: RepositoryProfile,
     impact: ImpactAnalysis,
     context: RepositoryContext,
-  ): Promise<DimensionScores>;
+  ): Promise<ScoringOutput>;
 }
 
 export class AIProviderError extends Error {

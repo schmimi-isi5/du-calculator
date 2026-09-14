@@ -5,10 +5,14 @@ import { config } from "../config.js";
 import type { DimensionScores, ImpactAnalysis, Requirement, ScoringResult } from "../domain/types.js";
 import { logger } from "../logging.js";
 import { computeDuResult } from "../scoring/duEngine.js";
-import { store } from "../store/InMemoryStore.js";
+import { repositoryContextCache } from "../store/RepositoryContextCache.js";
+import { store } from "../store/PostgresScoringStore.js";
 import { asyncHandler } from "./asyncHandler.js";
 
 export const requirementRouter = Router();
+
+const DEFAULT_HISTORY_LIMIT = 50;
+const MAX_HISTORY_LIMIT = 200;
 
 requirementRouter.post("/score", asyncHandler(async (req, res) => {
   const { snapshotId, requirement: requirementInput } = req.body ?? {};
@@ -18,7 +22,7 @@ requirementRouter.post("/score", asyncHandler(async (req, res) => {
     return;
   }
 
-  const snapshot = store.getSnapshot(snapshotId);
+  const snapshot = await store.getSnapshot(snapshotId);
   if (!snapshot) {
     res.status(404).json({ error: "Repository snapshot not found." });
     return;
@@ -28,7 +32,7 @@ requirementRouter.post("/score", asyncHandler(async (req, res) => {
     return;
   }
 
-  const context = store.getRepositoryContext(snapshotId);
+  const context = repositoryContextCache.get(snapshotId);
   if (!context) {
     res
       .status(409)
@@ -53,25 +57,22 @@ requirementRouter.post("/score", asyncHandler(async (req, res) => {
     dimensionScores: null,
     confidence: null,
     duResult: null,
+    overallAssessment: null,
     openQuestions: [],
     errorMessage: null,
     scoredAt: null,
   };
-  store.saveScoringResult(result);
+  await store.saveScoringResult(result);
 
   try {
     const aiProvider = getAIProvider();
     const impactAnalysis = await aiProvider.analyzeRequirement(requirement, snapshot.profile, context);
-    const dimensionScores = await aiProvider.scoreRequirement(
-      requirement,
-      snapshot.profile,
-      impactAnalysis,
-      context,
-    );
-    const engineResult = computeDuResult(dimensionScores, config.pricePerDU);
+    const scoringOutput = await aiProvider.scoreRequirement(requirement, snapshot.profile, impactAnalysis, context);
+    const engineResult = computeDuResult(scoringOutput.dimensions, config.pricePerDU);
 
     result.impactAnalysis = impactAnalysis;
-    result.dimensionScores = dimensionScores;
+    result.dimensionScores = scoringOutput.dimensions;
+    result.overallAssessment = scoringOutput.overallAssessment;
     result.confidence = {
       overallConfidence: engineResult.overallConfidence,
       confidenceLevel: engineResult.confidenceLevel,
@@ -81,7 +82,7 @@ requirementRouter.post("/score", asyncHandler(async (req, res) => {
     if (engineResult.confidenceLevel === "LOW") {
       result.status = "NEEDS_CLARIFICATION";
       result.duResult = null;
-      result.openQuestions = collectOpenQuestions(impactAnalysis, dimensionScores);
+      result.openQuestions = collectOpenQuestions(impactAnalysis, scoringOutput.dimensions);
     } else if (engineResult.duClass === "XXL") {
       result.status = "DECOMPOSITION_REQUIRED";
       result.duResult = engineResult;
@@ -95,18 +96,32 @@ requirementRouter.post("/score", asyncHandler(async (req, res) => {
     logger.error("Requirement scoring failed", { scoringId: result.id, snapshotId, error: result.errorMessage });
   }
 
-  store.saveScoringResult(result);
+  await store.saveScoringResult(result);
   res.status(200).json(result);
 }));
 
-requirementRouter.get("/:id", (req, res) => {
-  const result = store.getScoringResult(req.params.id);
+// Registered before "/:id" - otherwise Express would match "history" as an :id.
+requirementRouter.get("/history", asyncHandler(async (req, res) => {
+  const rawLimit = Number.parseInt(String(req.query.limit ?? ""), 10);
+  const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, MAX_HISTORY_LIMIT) : DEFAULT_HISTORY_LIMIT;
+
+  const entries = await store.listScoringResults(limit);
+  res.status(200).json(entries);
+}));
+
+requirementRouter.get("/:id", asyncHandler(async (req, res) => {
+  const id = req.params.id;
+  if (!id) {
+    res.status(400).json({ error: "id is required." });
+    return;
+  }
+  const result = await store.getScoringResult(id);
   if (!result) {
     res.status(404).json({ error: "Scoring result not found." });
     return;
   }
   res.status(200).json(result);
-});
+}));
 
 function parseRequirement(input: unknown): Requirement {
   if (typeof input !== "object" || input === null) {

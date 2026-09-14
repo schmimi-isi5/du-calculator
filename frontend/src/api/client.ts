@@ -1,19 +1,8 @@
-import type { Requirement, RepositorySnapshot, ScoringResult } from "../types";
+import type { Requirement, RepositorySnapshot, ScoringHistoryEntry, ScoringResult } from "../types";
 
 export class ApiError extends Error {}
 
-async function postJson<T>(path: string, body: unknown): Promise<T> {
-  let response: Response;
-  try {
-    response = await fetch(path, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-  } catch {
-    throw new ApiError("Backend nicht erreichbar. Läuft der DU Calculator Server?");
-  }
-
+async function handleResponse<T>(response: Response): Promise<T> {
   let payload: unknown;
   try {
     payload = await response.json();
@@ -32,10 +21,42 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
   return payload as T;
 }
 
+async function postJson<T>(path: string, body: unknown): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new ApiError("Backend nicht erreichbar. Läuft der DU Calculator Server?");
+  }
+  return handleResponse<T>(response);
+}
+
+async function getJson<T>(path: string): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(path);
+  } catch {
+    throw new ApiError("Backend nicht erreichbar. Läuft der DU Calculator Server?");
+  }
+  return handleResponse<T>(response);
+}
+
 export function analyzeRepository(repositoryUrl: string, branch: string): Promise<RepositorySnapshot> {
   return postJson<RepositorySnapshot>("/api/repository/analyze", { repositoryUrl, branch });
 }
 
 export function scoreRequirement(snapshotId: string, requirement: Requirement): Promise<ScoringResult> {
   return postJson<ScoringResult>("/api/requirement/score", { snapshotId, requirement });
+}
+
+export function getScoringHistory(): Promise<ScoringHistoryEntry[]> {
+  return getJson<ScoringHistoryEntry[]>("/api/requirement/history");
+}
+
+export function getScoringResult(id: string): Promise<ScoringResult> {
+  return getJson<ScoringResult>(`/api/requirement/${encodeURIComponent(id)}`);
 }

@@ -106,19 +106,29 @@ const DIMENSION_DESCRIPTIONS = `
 8. uncertaintyRisk (weight 5%): how much is still unclear or risky about delivering this correctly.
 `.trim();
 
+const BILINGUAL_RULE = `
+Bilingual output rule:
+- Every "summary", "rationale", and "overallAssessment" field must be written independently in both English and German (Deutsch) - fluent, natural business language in each, not a literal word-for-word translation of the other.
+- "summary" is a single compact sentence per language - the quick read for that dimension.
+- "rationale" is the detailed, evidence-grounded reasoning per language - the full evaluation, consistent with "summary" but more thorough.
+- "overallAssessment" is 2-4 sentences per language that synthesize all eight dimensions together into one read of the requirement's overall scope, complexity, and risk. It still must not state a DU number, class, or price - those are computed by the application, not by you.
+`.trim();
+
 export function buildScoringPrompt(
   requirement: Requirement,
   profile: RepositoryProfile,
   impact: ImpactAnalysis,
   context: RepositoryContext,
 ): { system: string; user: string } {
-  const system = `You are scoring a customer requirement across eight fixed dimensions for the ISIFIVE DU Calculator. You NEVER decide a final Development Unit count or price - that is computed deterministically by the application from your per-dimension scores. Your only job is to score each dimension 1 (very low) to 5 (very high), with a rationale, evidence, a confidence (0.0-1.0), and any missing information that limits your confidence.
+  const system = `You are scoring a customer requirement across eight fixed dimensions for the ISIFIVE DU Calculator. You NEVER decide a final Development Unit count or price - that is computed deterministically by the application from your per-dimension scores. Your only job is to score each dimension 1 (very low) to 5 (very high), with a summary, a detailed rationale, evidence, a confidence (0.0-1.0), and any missing information that limits your confidence - plus one overall assessment synthesizing all eight dimensions.
 
 ${DIMENSION_DESCRIPTIONS}
 
 ${EVIDENCE_RULES}
 
 ${REUSE_RULE}
+
+${BILINGUAL_RULE}
 
 If you lack information to score a dimension confidently, say so explicitly in missingInformation and lower that dimension's confidence accordingly - do not compensate by guessing a score you cannot support.`;
 

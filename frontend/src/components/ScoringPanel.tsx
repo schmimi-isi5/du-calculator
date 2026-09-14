@@ -1,18 +1,30 @@
 import { DIMENSION_ORDER } from "../types";
-import type { ScoringResult } from "../types";
+import type { ScoringResult, UiLanguage } from "../types";
 import { SCORING_STATUS_META } from "../statusMeta";
 
 interface Props {
   loading: boolean;
   result: ScoringResult | null;
+  language: UiLanguage;
+  onChangeLanguage: (language: UiLanguage) => void;
 }
 
-export function ScoringPanel({ loading, result }: Props) {
+export function ScoringPanel({ loading, result, language, onChangeLanguage }: Props) {
   const statusMeta = SCORING_STATUS_META[loading ? "ANALYZING" : result?.status ?? "NOT_STARTED"];
 
   return (
     <div className="card">
-      <h2>3 · AI Scoring</h2>
+      <div className="actions" style={{ marginTop: 0, justifyContent: "space-between" }}>
+        <h2 style={{ margin: 0 }}>3 · AI Scoring</h2>
+        <div className="lang-toggle">
+          <button className={language === "de" ? "active" : ""} onClick={() => onChangeLanguage("de")}>
+            DE
+          </button>
+          <button className={language === "en" ? "active" : ""} onClick={() => onChangeLanguage("en")}>
+            EN
+          </button>
+        </div>
+      </div>
       <span className={`status-pill ${statusMeta.variant}`}>{statusMeta.label}</span>
 
       {!result && !loading && (
@@ -40,6 +52,13 @@ export function ScoringPanel({ loading, result }: Props) {
         <div className="notice" style={{ marginTop: 10 }}>
           Diese Anforderung ist zu groß für eine einzelne DU-Schätzung (Klasse XXL). Bitte in kleinere,
           bewertbare Requirements zerlegen.
+        </div>
+      )}
+
+      {result?.overallAssessment && (
+        <div className="overall-assessment">
+          <strong style={{ fontSize: 13 }}>Gesamteinschätzung · Overall Assessment</strong>
+          <p style={{ margin: "6px 0 0" }}>{result.overallAssessment[language]}</p>
         </div>
       )}
 
@@ -74,15 +93,19 @@ export function ScoringPanel({ loading, result }: Props) {
                     {Math.round(dim.confidence * 100)}%
                   </span>
                 </div>
-                <div className="dim-rationale">{dim.rationale}</div>
-                {dim.evidence.map((ev, i) => (
-                  <div className="evidence-line" key={i}>
-                    <code className="file-path">{ev.file}</code> — {ev.reason}
-                  </div>
-                ))}
-                {dim.missingInformation.length > 0 && (
-                  <div className="dim-missing">Fehlende Information: {dim.missingInformation.join("; ")}</div>
-                )}
+                <div className="dim-summary">{dim.summary[language]}</div>
+                <details className="dim-details">
+                  <summary>Einzelauswertung · Detailed evaluation</summary>
+                  <div className="dim-rationale">{dim.rationale[language]}</div>
+                  {dim.evidence.map((ev, i) => (
+                    <div className="evidence-line" key={i}>
+                      <code className="file-path">{ev.file}</code> — {ev.reason}
+                    </div>
+                  ))}
+                  {dim.missingInformation.length > 0 && (
+                    <div className="dim-missing">Fehlende Information: {dim.missingInformation.join("; ")}</div>
+                  )}
+                </details>
               </div>
             );
           })}

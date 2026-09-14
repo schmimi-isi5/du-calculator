@@ -5,13 +5,13 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
-import { DimensionScoresSchema, ImpactAnalysisSchema, RepositoryProfileSchema } from "../domain/schemas.js";
+import { ImpactAnalysisSchema, RepositoryProfileSchema, ScoringOutputSchema } from "../domain/schemas.js";
 import type {
-  DimensionScores,
   ImpactAnalysis,
   Requirement,
   RepositoryContext,
   RepositoryProfile,
+  ScoringOutput,
 } from "../domain/types.js";
 import type { AIProvider, RepositoryIdentity } from "./AIProvider.js";
 import { AIProviderError } from "./AIProvider.js";
@@ -49,9 +49,9 @@ export class AnthropicProvider implements AIProvider {
     profile: RepositoryProfile,
     impact: ImpactAnalysis,
     context: RepositoryContext,
-  ): Promise<DimensionScores> {
+  ): Promise<ScoringOutput> {
     const { system, user } = buildScoringPrompt(requirement, profile, impact, context);
-    return this.parse<DimensionScores>(system, user, DimensionScoresSchema, "scoreRequirement");
+    return this.parse<ScoringOutput>(system, user, ScoringOutputSchema, "scoreRequirement");
   }
 
   private async parse<T>(
