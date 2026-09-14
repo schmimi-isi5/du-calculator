@@ -5,6 +5,11 @@
 
 import { z } from "zod";
 
+export const LocalizedTextSchema = z.object({
+  en: z.string().describe("English version of this text."),
+  de: z.string().describe("German (Deutsch) version of this text - not a literal machine translation, written naturally."),
+});
+
 export const EvidenceSchema = z.object({
   file: z
     .string()
@@ -51,7 +56,12 @@ export const ImpactAnalysisSchema = z.object({
 
 const DimensionScoreSchema = z.object({
   score: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]),
-  rationale: z.string(),
+  summary: LocalizedTextSchema.describe(
+    "One compact sentence per language summarizing this dimension's score - the quick-read view.",
+  ),
+  rationale: LocalizedTextSchema.describe(
+    "The detailed reasoning per language behind the score - the full evaluation.",
+  ),
   evidence: z.array(EvidenceSchema),
   confidence: z.number().min(0).max(1),
   missingInformation: z.array(z.string()),
@@ -72,4 +82,16 @@ export const DimensionScoresSchema = z.object({
   testingQA: DimensionScoreSchema,
   deploymentOperations: DimensionScoreSchema,
   uncertaintyRisk: DimensionScoreSchema,
+});
+
+/**
+ * Full output of the scoring call: the eight dimensions plus one narrative
+ * that synthesizes them into an overall complexity/scope read. The AI still
+ * never states a DU number here - only descriptive text.
+ */
+export const ScoringOutputSchema = z.object({
+  dimensions: DimensionScoresSchema,
+  overallAssessment: LocalizedTextSchema.describe(
+    "2-4 sentences per language characterizing the overall scope, complexity, and risk across all eight dimensions together.",
+  ),
 });

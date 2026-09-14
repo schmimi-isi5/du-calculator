@@ -280,9 +280,70 @@ textarea {
   margin-top: 3px;
 }
 
+.lang-toggle {
+  display: flex;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+
+.lang-toggle button {
+  border: 0;
+  padding: 5px 11px;
+  background: #f2f6f4;
+  color: var(--muted);
+  font-weight: 800;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.lang-toggle button.active {
+  background: var(--teal);
+  color: #fff;
+}
+
+.overall-assessment {
+  background: var(--pp, var(--teal-tint));
+  border-radius: 10px;
+  padding: 12px;
+  margin: 12px 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .dim {
   border-top: 1px solid #edf1f0;
   padding: 12px 0;
+}
+
+.dim-summary {
+  font-size: 13px;
+  font-weight: 700;
+  margin-top: 6px;
+}
+
+.dim-details {
+  margin-top: 6px;
+}
+
+.dim-details > summary {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--teal);
+  cursor: pointer;
+  list-style: none;
+}
+
+.dim-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.dim-details > summary::before {
+  content: "▸ ";
+}
+
+.dim-details[open] > summary::before {
+  content: "▾ ";
 }
 
 .dim:first-child {
@@ -462,4 +523,70 @@ code.file-path {
   padding: 1px 5px;
   border-radius: 4px;
   font-size: 11px;
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.tabs button {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  padding: 8px 14px;
+  border-radius: 9px;
+  font-weight: 800;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.tabs button.active {
+  background: var(--teal);
+  color: #fff;
+  border-color: var(--teal);
+}
+
+.history-table-wrap {
+  overflow-x: auto;
+}
+
+.history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.history-table th {
+  text-align: left;
+  padding: 8px 10px;
+  color: var(--muted);
+  font-size: 11px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.history-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #eef1f0;
+  white-space: nowrap;
+}
+
+.history-table tbody tr {
+  cursor: pointer;
+}
+
+.history-table tbody tr:hover {
+  background: #f8faf9;
+}
+
+.history-table tbody tr.selected {
+  background: var(--teal-tint);
+}
+
+.history-repo {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

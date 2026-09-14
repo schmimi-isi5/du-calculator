@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { analyzeRepository, ApiError, scoreRequirement } from "./api/client";
+import { analyzeRepository, ApiError, getScoringResult, scoreRequirement } from "./api/client";
+import { HistoryPanel } from "./components/HistoryPanel";
 import { RepositoryPanel } from "./components/RepositoryPanel";
 import { RequirementPanel } from "./components/RequirementPanel";
 import { ResultHero } from "./components/ResultHero";
 import { ScoringPanel } from "./components/ScoringPanel";
-import type { RepositorySnapshot, ScoringResult } from "./types";
+import type { RepositorySnapshot, ScoringResult, UiLanguage } from "./types";
 
 function linesToList(value: string): string[] {
   return value
@@ -13,7 +14,12 @@ function linesToList(value: string): string[] {
     .filter((line) => line.length > 0);
 }
 
+type Tab = "new" | "history";
+
 export default function App() {
+  const [activeTab, setActiveTab] = useState<Tab>("new");
+  const [language, setLanguage] = useState<UiLanguage>("de");
+
   const [repositoryUrl, setRepositoryUrl] = useState("");
   const [branch, setBranch] = useState("main");
   const [snapshot, setSnapshot] = useState<RepositorySnapshot | null>(null);
@@ -26,6 +32,12 @@ export default function App() {
   const [constraints, setConstraints] = useState("");
   const [scoringResult, setScoringResult] = useState<ScoringResult | null>(null);
   const [scoringLoading, setScoringLoading] = useState(false);
+
+  const [historyRefreshToken, setHistoryRefreshToken] = useState(0);
+  const [historySelectedId, setHistorySelectedId] = useState<string | null>(null);
+  const [historyResult, setHistoryResult] = useState<ScoringResult | null>(null);
+  const [historyDetailLoading, setHistoryDetailLoading] = useState(false);
+  const [historyDetailError, setHistoryDetailError] = useState<string | null>(null);
 
   async function handleAnalyze() {
     setRepoLoading(true);
@@ -54,6 +66,8 @@ export default function App() {
         constraints: linesToList(constraints),
       });
       setScoringResult(result);
+      // A new scoring result was persisted - the history list should reflect it next time it's viewed.
+      setHistoryRefreshToken((token) => token + 1);
     } catch (err) {
       setScoringResult({
         id: "local-error",
@@ -69,12 +83,28 @@ export default function App() {
         dimensionScores: null,
         confidence: null,
         duResult: null,
+        overallAssessment: null,
         openQuestions: [],
         errorMessage: err instanceof ApiError ? err.message : "Unerwarteter Fehler.",
         scoredAt: null,
       });
     } finally {
       setScoringLoading(false);
+    }
+  }
+
+  async function handleSelectHistoryEntry(id: string) {
+    setHistorySelectedId(id);
+    setHistoryDetailLoading(true);
+    setHistoryDetailError(null);
+    setHistoryResult(null);
+    try {
+      const result = await getScoringResult(id);
+      setHistoryResult(result);
+    } catch (err) {
+      setHistoryDetailError(err instanceof ApiError ? err.message : "Unerwarteter Fehler.");
+    } finally {
+      setHistoryDetailLoading(false);
     }
   }
 
@@ -95,40 +125,81 @@ export default function App() {
       </header>
 
       <main>
-        <div className="grid">
-          <section>
-            <RepositoryPanel
-              repositoryUrl={repositoryUrl}
-              branch={branch}
-              loading={repoLoading}
-              requestError={repoRequestError}
-              snapshot={snapshot}
-              onChangeRepositoryUrl={setRepositoryUrl}
-              onChangeBranch={setBranch}
-              onAnalyze={handleAnalyze}
-            />
-
-            <RequirementPanel
-              title={title}
-              description={description}
-              acceptanceCriteria={acceptanceCriteria}
-              constraints={constraints}
-              canSubmit={canSubmitRequirement}
-              loading={scoringLoading}
-              onChangeTitle={setTitle}
-              onChangeDescription={setDescription}
-              onChangeAcceptanceCriteria={setAcceptanceCriteria}
-              onChangeConstraints={setConstraints}
-              onSubmit={handleScore}
-            />
-
-            <ScoringPanel loading={scoringLoading} result={scoringResult} />
-          </section>
-
-          <aside>
-            <ResultHero result={scoringResult} />
-          </aside>
+        <div className="tabs">
+          <button className={activeTab === "new" ? "active" : ""} onClick={() => setActiveTab("new")}>
+            Neue Bewertung
+          </button>
+          <button className={activeTab === "history" ? "active" : ""} onClick={() => setActiveTab("history")}>
+            Historie
+          </button>
         </div>
+
+        {activeTab === "new" && (
+          <div className="grid">
+            <section>
+              <RepositoryPanel
+                repositoryUrl={repositoryUrl}
+                branch={branch}
+                loading={repoLoading}
+                requestError={repoRequestError}
+                snapshot={snapshot}
+                onChangeRepositoryUrl={setRepositoryUrl}
+                onChangeBranch={setBranch}
+                onAnalyze={handleAnalyze}
+              />
+
+              <RequirementPanel
+                title={title}
+                description={description}
+                acceptanceCriteria={acceptanceCriteria}
+                constraints={constraints}
+                canSubmit={canSubmitRequirement}
+                loading={scoringLoading}
+                onChangeTitle={setTitle}
+                onChangeDescription={setDescription}
+                onChangeAcceptanceCriteria={setAcceptanceCriteria}
+                onChangeConstraints={setConstraints}
+                onSubmit={handleScore}
+              />
+
+              <ScoringPanel
+                loading={scoringLoading}
+                result={scoringResult}
+                language={language}
+                onChangeLanguage={setLanguage}
+              />
+            </section>
+
+            <aside>
+              <ResultHero result={scoringResult} />
+            </aside>
+          </div>
+        )}
+
+        {activeTab === "history" && (
+          <div className="grid">
+            <section>
+              <HistoryPanel
+                selectedId={historySelectedId}
+                onSelect={handleSelectHistoryEntry}
+                refreshToken={historyRefreshToken}
+              />
+
+              {historyDetailError && <div className="notice error">{historyDetailError}</div>}
+
+              {historySelectedId && (
+                <ScoringPanel
+                  loading={historyDetailLoading}
+                  result={historyResult}
+                  language={language}
+                  onChangeLanguage={setLanguage}
+                />
+              )}
+            </section>
+
+            <aside>{historySelectedId && <ResultHero result={historyResult} />}</aside>
+          </div>
+        )}
       </main>
     </>
   );

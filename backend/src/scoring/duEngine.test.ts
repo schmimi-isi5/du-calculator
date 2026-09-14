@@ -20,7 +20,8 @@ function buildScores(
     scores[key] = {
       score: override?.score ?? 3,
       confidence: override?.confidence ?? 0.9,
-      rationale: "test rationale",
+      summary: { en: "test summary", de: "Test-Zusammenfassung" },
+      rationale: { en: "test rationale", de: "Test-Begründung" },
       evidence: [],
       missingInformation: [],
     };

@@ -15,6 +15,13 @@ export type ScoringStatus =
 
 export type EvidenceStatus = "VERIFIED" | "INFERRED" | "UNKNOWN";
 
+export interface LocalizedText {
+  en: string;
+  de: string;
+}
+
+export type UiLanguage = "en" | "de";
+
 export interface Evidence {
   file: string;
   reason: string;
@@ -85,7 +92,8 @@ export type DimensionKey = (typeof DIMENSION_ORDER)[number][0];
 
 export interface DimensionScore {
   score: 1 | 2 | 3 | 4 | 5;
-  rationale: string;
+  summary: LocalizedText;
+  rationale: LocalizedText;
   evidence: Evidence[];
   confidence: number;
   missingInformation: string[];
@@ -118,7 +126,25 @@ export interface ScoringResult {
   dimensionScores: DimensionScores | null;
   confidence: ConfidenceAssessment | null;
   duResult: DuResult | null;
+  overallAssessment: LocalizedText | null;
   openQuestions: string[];
   errorMessage: string | null;
   scoredAt: string | null;
+}
+
+/** One row of the requirement -> DU decision history list. */
+export interface ScoringHistoryEntry {
+  id: string;
+  snapshotId: string;
+  repositoryUrl: string;
+  branch: string;
+  requirementTitle: string;
+  status: ScoringStatus;
+  duClass: DuClass | null;
+  developmentUnits: number | null;
+  price: number | null;
+  overallConfidence: number | null;
+  confidenceLevel: "HIGH" | "MEDIUM" | "LOW" | null;
+  scoredAt: string | null;
+  createdAt: string;
 }
