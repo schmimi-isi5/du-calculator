@@ -29,7 +29,7 @@ import type {
   RepositoryProfile,
   ScoringOutput,
 } from "../domain/types.js";
-import type { AIProvider, RepositoryIdentity, ResolvedRequirementKnowledge } from "./AIProvider.js";
+import type { AIProvider, RepositoryIdentity, ResolvedRequirementKnowledge, UsageContext } from "./AIProvider.js";
 import { AIProviderError } from "./AIProvider.js";
 import {
   buildContextResolutionPrompt,
@@ -90,9 +90,16 @@ export class OpenAICompatibleProvider implements AIProvider {
   async analyzeRepository(
     repository: RepositoryIdentity,
     context: RepositoryContext,
+    usageContext: UsageContext,
   ): Promise<RepositoryProfile> {
     const prompt = buildRepositoryAnalysisPrompt(repository, context);
-    return this.complete<RepositoryProfile>(prompt, RepositoryProfileSchema, "analyzeRepository", "RepositoryProfile");
+    return this.complete<RepositoryProfile>(
+      prompt,
+      RepositoryProfileSchema,
+      "analyzeRepository",
+      "RepositoryProfile",
+      usageContext,
+    );
   }
 
   async resolveRequirementContext(
@@ -100,6 +107,7 @@ export class OpenAICompatibleProvider implements AIProvider {
     profile: RepositoryProfile,
     context: RepositoryContext,
     answeredClarifications: Clarification[],
+    usageContext: UsageContext,
   ): Promise<ContextResolutionOutput> {
     const prompt = buildContextResolutionPrompt(requirement, profile, context, answeredClarifications);
     return this.complete<ContextResolutionOutput>(
@@ -107,6 +115,7 @@ export class OpenAICompatibleProvider implements AIProvider {
       ContextResolutionOutputSchema,
       "resolveRequirementContext",
       "ContextResolutionOutput",
+      usageContext,
     );
   }
 
@@ -115,9 +124,16 @@ export class OpenAICompatibleProvider implements AIProvider {
     profile: RepositoryProfile,
     context: RepositoryContext,
     knowledge: ResolvedRequirementKnowledge,
+    usageContext: UsageContext,
   ): Promise<ImpactAnalysis> {
     const prompt = buildImpactAnalysisPrompt(requirement, profile, context, knowledge);
-    return this.complete<ImpactAnalysis>(prompt, ImpactAnalysisSchema, "analyzeRequirement", "ImpactAnalysis");
+    return this.complete<ImpactAnalysis>(
+      prompt,
+      ImpactAnalysisSchema,
+      "analyzeRequirement",
+      "ImpactAnalysis",
+      usageContext,
+    );
   }
 
   async scoreRequirement(
@@ -126,9 +142,16 @@ export class OpenAICompatibleProvider implements AIProvider {
     impact: ImpactAnalysis,
     context: RepositoryContext,
     knowledge: ResolvedRequirementKnowledge,
+    usageContext: UsageContext,
   ): Promise<ScoringOutput> {
     const prompt = buildScoringPrompt(requirement, profile, impact, context, knowledge);
-    return this.complete<ScoringOutput>(prompt, ScoringOutputSchema, "scoreRequirement", "ScoringOutput");
+    return this.complete<ScoringOutput>(
+      prompt,
+      ScoringOutputSchema,
+      "scoreRequirement",
+      "ScoringOutput",
+      usageContext,
+    );
   }
 
   private async complete<T>(
@@ -136,6 +159,7 @@ export class OpenAICompatibleProvider implements AIProvider {
     schema: ZodType<T>,
     step: string,
     schemaName: string,
+    usageContext: UsageContext,
   ): Promise<T> {
     try {
       const response = await this.client.chat.completions.create({
@@ -157,13 +181,19 @@ export class OpenAICompatibleProvider implements AIProvider {
       const usage = response.usage;
       if (usage) {
         const cachedTokens = usage.prompt_tokens_details?.cached_tokens ?? 0;
-        await recordUsage(this.providerName, response.model ?? this.model, step, {
-          inputTokens: Math.max(usage.prompt_tokens - cachedTokens, 0),
-          outputTokens: usage.completion_tokens,
-          cacheWrite5mTokens: 0,
-          cacheWrite1hTokens: 0,
-          cacheReadTokens: cachedTokens,
-        });
+        await recordUsage(
+          this.providerName,
+          response.model ?? this.model,
+          step,
+          {
+            inputTokens: Math.max(usage.prompt_tokens - cachedTokens, 0),
+            outputTokens: usage.completion_tokens,
+            cacheWrite5mTokens: 0,
+            cacheWrite1hTokens: 0,
+            cacheReadTokens: cachedTokens,
+          },
+          usageContext,
+        );
       }
 
       const message = response.choices[0]?.message;

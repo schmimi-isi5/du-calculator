@@ -282,6 +282,25 @@ export interface AIUsageSummary {
   byOperation: AIUsageBreakdownEntry[];
 }
 
+/** One individual AI call, for the detailed usage log - see backend domain/types.ts AIUsageLogEntry. */
+export interface AIUsageLogEntry {
+  id: string;
+  provider: AIProviderName;
+  model: string;
+  operation: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationInputTokens: number;
+  cacheReadInputTokens: number;
+  costUsd: number | null;
+  snapshotId: string | null;
+  requirementContextId: string | null;
+  scoringId: string | null;
+  createdAt: string;
+  /** The requirement title or repository URL this call was for, or null if unresolvable. */
+  label: string | null;
+}
+
 export interface AIUsageConfig {
   provider: AIProviderName;
   model: string;

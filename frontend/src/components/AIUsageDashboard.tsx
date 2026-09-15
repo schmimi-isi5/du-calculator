@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { ApiError, getAIUsageConfig, getAIUsageSummary } from "../api/client";
-import type { AIUsageBreakdownEntry, AIUsageConfig, AIUsageSummary } from "../types";
+import { ApiError, getAIUsageConfig, getAIUsageLog, getAIUsageSummary } from "../api/client";
+import type { AIUsageBreakdownEntry, AIUsageConfig, AIUsageLogEntry, AIUsageSummary } from "../types";
 
 type Preset = "today" | "yesterday" | "last7days" | "thisMonth" | "custom";
 
@@ -65,11 +65,55 @@ function formatTokens(tokens: number): string {
   return tokens.toLocaleString("de-DE");
 }
 
+function csvCell(value: string | number | null): string {
+  const text = value === null ? "" : String(value);
+  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function downloadUsageLogCsv(entries: AIUsageLogEntry[]): void {
+  const header = [
+    "Zeitpunkt",
+    "Bezug",
+    "Vorgang",
+    "Provider",
+    "Modell",
+    "Input-Token",
+    "Output-Token",
+    "Cache geschrieben",
+    "Cache gelesen",
+    "Kosten (USD)",
+  ];
+  const rows = entries.map((entry) => [
+    entry.createdAt,
+    entry.label ?? "",
+    entry.operation,
+    entry.provider,
+    entry.model,
+    entry.inputTokens,
+    entry.outputTokens,
+    entry.cacheCreationInputTokens,
+    entry.cacheReadInputTokens,
+    entry.costUsd ?? "",
+  ]);
+  const csv = [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\n");
+
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `ki-kosten-log-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 export function AIUsageDashboard() {
   const [preset, setPreset] = useState<Preset>("today");
   const [customFrom, setCustomFrom] = useState(toDateInputValue(new Date()));
   const [customTo, setCustomTo] = useState(toDateInputValue(new Date()));
   const [summary, setSummary] = useState<AIUsageSummary | null>(null);
+  const [logEntries, setLogEntries] = useState<AIUsageLogEntry[]>([]);
   const [aiConfig, setAiConfig] = useState<AIUsageConfig | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -89,9 +133,12 @@ export function AIUsageDashboard() {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    getAIUsageSummary(range.from, range.to)
-      .then((result) => {
-        if (!cancelled) setSummary(result);
+    Promise.all([getAIUsageSummary(range.from, range.to), getAIUsageLog(range.from, range.to)])
+      .then(([summaryResult, logResult]) => {
+        if (!cancelled) {
+          setSummary(summaryResult);
+          setLogEntries(logResult);
+        }
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof ApiError ? err.message : "Unerwarteter Fehler.");
@@ -196,8 +243,64 @@ export function AIUsageDashboard() {
               <UsageBreakdownTable entries={summary.byOperation} />
             </>
           )}
+
+          {logEntries.length > 0 && (
+            <>
+              <div
+                className="actions"
+                style={{ marginTop: 18, marginBottom: 0, justifyContent: "space-between" }}
+              >
+                <div className="context-section-title" style={{ marginTop: 0 }}>
+                  Detailliertes Log ({logEntries.length})
+                </div>
+                <button className="btn secondary" onClick={() => downloadUsageLogCsv(logEntries)}>
+                  CSV exportieren
+                </button>
+              </div>
+              <UsageLogTable entries={logEntries} />
+            </>
+          )}
         </>
       )}
+    </div>
+  );
+}
+
+function UsageLogTable({ entries }: { entries: AIUsageLogEntry[] }) {
+  return (
+    <div className="usage-table-wrap">
+      <table className="usage-table">
+        <thead>
+          <tr>
+            <th>Zeitpunkt</th>
+            <th>Bezug</th>
+            <th>Vorgang</th>
+            <th>Modell</th>
+            <th>Input</th>
+            <th>Output</th>
+            <th>Cache geschrieben</th>
+            <th>Cache gelesen</th>
+            <th>Kosten</th>
+          </tr>
+        </thead>
+        <tbody>
+          {entries.map((entry) => (
+            <tr key={entry.id}>
+              <td>{new Date(entry.createdAt).toLocaleString("de-DE")}</td>
+              <td className="history-repo">{entry.label ?? "–"}</td>
+              <td>{entry.operation}</td>
+              <td>
+                {entry.provider} / {entry.model}
+              </td>
+              <td>{formatTokens(entry.inputTokens)}</td>
+              <td>{formatTokens(entry.outputTokens)}</td>
+              <td>{formatTokens(entry.cacheCreationInputTokens)}</td>
+              <td>{formatTokens(entry.cacheReadInputTokens)}</td>
+              <td>{formatCost(entry.costUsd)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

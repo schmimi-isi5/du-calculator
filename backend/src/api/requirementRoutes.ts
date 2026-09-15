@@ -78,14 +78,22 @@ requirementRouter.post("/score", asyncHandler(async (req, res) => {
       assumptions: requirementContext.assumptions,
     };
     const availableAssumptionIds = new Set(activeAssumptions(requirementContext.assumptions).map((a) => a.id));
+    const usageContext = { snapshotId, requirementContextId: contextId, scoringId: result.id };
 
-    const impactAnalysis = await aiProvider.analyzeRequirement(requirement, snapshot.profile, context, knowledge);
+    const impactAnalysis = await aiProvider.analyzeRequirement(
+      requirement,
+      snapshot.profile,
+      context,
+      knowledge,
+      usageContext,
+    );
     const scoringOutput = await aiProvider.scoreRequirement(
       requirement,
       snapshot.profile,
       impactAnalysis,
       context,
       knowledge,
+      usageContext,
     );
     const engineResult = computeDuResult(scoringOutput.dimensions, config.pricePerDU);
 

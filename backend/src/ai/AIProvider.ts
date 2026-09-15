@@ -35,11 +35,24 @@ export interface ResolvedRequirementKnowledge {
   assumptions: Assumption[];
 }
 
+/**
+ * Which domain record(s) a call was for - threaded through to the AI usage
+ * log (see ai/usageTracker.ts) purely for traceability ("which requirement
+ * cost how much"); never used for AI behavior. snapshotId is always known;
+ * the others are populated once they exist.
+ */
+export interface UsageContext {
+  snapshotId: string;
+  requirementContextId?: string;
+  scoringId?: string;
+}
+
 export interface AIProvider {
   /** Semantic understanding of the repository - languages, frameworks, services, evidence-backed findings. */
   analyzeRepository(
     repository: RepositoryIdentity,
     context: RepositoryContext,
+    usage: UsageContext,
   ): Promise<RepositoryProfile>;
 
   /**
@@ -55,6 +68,7 @@ export interface AIProvider {
     profile: RepositoryProfile,
     context: RepositoryContext,
     answeredClarifications: Clarification[],
+    usage: UsageContext,
   ): Promise<ContextResolutionOutput>;
 
   /** Compares the requirement against the repository profile: what exists, what must change, what's new. */
@@ -63,6 +77,7 @@ export interface AIProvider {
     profile: RepositoryProfile,
     context: RepositoryContext,
     knowledge: ResolvedRequirementKnowledge,
+    usage: UsageContext,
   ): Promise<ImpactAnalysis>;
 
   /**
@@ -77,6 +92,7 @@ export interface AIProvider {
     impact: ImpactAnalysis,
     context: RepositoryContext,
     knowledge: ResolvedRequirementKnowledge,
+    usage: UsageContext,
   ): Promise<ScoringOutput>;
 }
 

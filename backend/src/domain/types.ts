@@ -366,7 +366,17 @@ export interface AIUsageRecord {
   cacheReadInputTokens: number;
   /** null when the (provider, model) has no known price (e.g. an unlisted OpenRouter model) - never a guessed number. */
   costUsd: number | null;
+  /** Which domain record(s) this call was for - see ai/AIProvider.ts UsageContext. */
+  snapshotId: string | null;
+  requirementContextId: string | null;
+  scoringId: string | null;
   createdAt: string;
+}
+
+/** One row of the detailed usage log, with a human-readable label resolved from whichever domain record the call belongs to. */
+export interface AIUsageLogEntry extends AIUsageRecord {
+  /** The requirement title (requirementContextId/scoringId) or repository URL (snapshotId only) this call was for, or null if the referenced record no longer exists. */
+  label: string | null;
 }
 
 export interface AIUsageBreakdownEntry {
