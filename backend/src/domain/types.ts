@@ -16,6 +16,7 @@ export type ScoringStatus =
   | "ANALYZING"
   | "NEEDS_CLARIFICATION"
   | "SCORED"
+  | "ASSESSMENT_WITH_ASSUMPTIONS"
   | "DECOMPOSITION_REQUIRED"
   | "ERROR";
 
@@ -143,6 +144,12 @@ export interface DimensionScore {
   evidence: Evidence[];
   confidence: number; // 0.0 - 1.0
   missingInformation: string[];
+  /** KnownFact ids this score relied on. */
+  factsUsed: string[];
+  /** Assumption ids this score relied on - more of these should lower confidence, never raise the score. */
+  assumptionsUsed: string[];
+  /** Risks that remain even after facts/assumptions were applied. */
+  unresolvedRisks: string[];
 }
 
 export type DimensionScores = Record<DimensionKey, DimensionScore>;
@@ -172,6 +179,8 @@ export interface ConfidenceAssessment {
 export interface ScoringResult {
   id: string;
   snapshotId: string;
+  /** The resolved RequirementContext this assessment was scored from - the audit trail back to facts/assumptions used. */
+  requirementContextId: string | null;
   requirement: Requirement;
   status: ScoringStatus;
   impactAnalysis: ImpactAnalysis | null;
@@ -182,6 +191,8 @@ export interface ScoringResult {
   duResult: DuResult | null;
   /** Cross-dimension narrative: how the 8 scores together characterize scope/complexity/risk. */
   overallAssessment: LocalizedText | null;
+  /** Union of assumption ids referenced by any dimension score - "this assessment relied on N assumptions". */
+  assumptionsUsed: string[];
   openQuestions: string[];
   errorMessage: string | null;
   scoredAt: string | null;
@@ -202,4 +213,136 @@ export interface ScoringHistoryEntry {
   confidenceLevel: "HIGH" | "MEDIUM" | "LOW" | null;
   scoredAt: string | null;
   createdAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Assumption & Clarification Engine
+//
+// Core principle: a missing piece of information is not automatically a
+// question for the user. It is only a question when its uncertainty would
+// materially change scope, architecture, risk, acceptance, or the DU result
+// - and only after the requirement, its acceptance criteria, prior
+// clarification answers, and the repository have all failed to resolve it.
+// Everything else becomes a documented, confidence-scored Assumption
+// instead. See ai/prompts.ts (buildContextResolutionPrompt) for where these
+// rules are actually enforced - this module only defines the shapes.
+// ---------------------------------------------------------------------------
+
+/** Where a piece of information sits on the certainty spectrum (spec section 3). */
+export type InformationClass =
+  | "FACT"
+  | "DERIVED"
+  | "ASSUMPTION"
+  | "CLARIFICATION_REQUIRED"
+  | "UNKNOWN_NON_BLOCKING";
+
+export type KnownFactSource =
+  | "REQUIREMENT"
+  | "ACCEPTANCE_CRITERIA"
+  | "CLARIFICATION_ANSWER"
+  | "REPOSITORY"
+  | "DERIVED";
+
+/** Something explicitly stated or verified - never invented. */
+export interface KnownFact {
+  id: string;
+  topic: string;
+  fact: string;
+  source: KnownFactSource;
+  evidence: Evidence[];
+}
+
+export type AssumptionCriticality = "LOW" | "MEDIUM" | "HIGH";
+export type AssumptionStatus = "ACTIVE" | "CONFIRMED" | "REJECTED" | "SUPERSEDED";
+
+/** A plausible, explicitly-flagged stand-in for something not otherwise resolvable. Never presented as a FACT. */
+export interface Assumption {
+  id: string;
+  topic: string;
+  assumption: string;
+  reason: string;
+  /** Free-text citations - "Requirement", "Acceptance Criteria", or a repository file path. */
+  basis: string[];
+  confidence: number;
+  affectedDimensions: DimensionKey[];
+  /** 0 = negligible, 1 = could move one dimension by ~1 point, 2 = could move several dimensions or the DU class. */
+  potentialScoreImpact: 0 | 1 | 2;
+  criticality: AssumptionCriticality;
+  status: AssumptionStatus;
+}
+
+/** A detected information gap, already classified - the clarification gate's raw material. */
+export interface MissingInformation {
+  id: string;
+  topic: string;
+  question: string;
+  classification: InformationClass;
+  potentialScoreImpact: 0 | 1 | 2;
+  affectedDimensions: DimensionKey[];
+  reasoning: string;
+}
+
+export type ClarificationStatus = "PENDING" | "ANSWERED" | "SKIPPED";
+
+/** A prioritized, decision-oriented question actually put to the user - the last resort, not the default. */
+export interface Clarification {
+  id: string;
+  missingInformationId: string;
+  question: string;
+  priority: number;
+  status: ClarificationStatus;
+  answer: string | null;
+  answeredAt: string | null;
+}
+
+export interface ClarificationAnswer {
+  clarificationId: string;
+  answer: string;
+}
+
+/** Structured extraction of the raw requirement text - no facts invented, only organized. */
+export interface RequirementNormalization {
+  objective: string;
+  businessGoal: string;
+  functionalRequirements: string[];
+  nonFunctionalRequirements: string[];
+  acceptanceCriteria: string[];
+  technicalConstraints: string[];
+  mentionedSystems: string[];
+  mentionedDataSources: string[];
+  mentionedIntegrations: string[];
+  mentionedExistingComponents: string[];
+  assumptionsAlreadyContainedInRequirement: string[];
+  unresolvedInformation: string[];
+}
+
+/** Raw AIProvider.resolveRequirementContext output, before the app assigns ids and runs the clarification gate. */
+export interface ContextResolutionOutput {
+  normalization: RequirementNormalization;
+  knownFacts: Omit<KnownFact, "id">[];
+  assumptions: Omit<Assumption, "id" | "status">[];
+  missingInformation: Omit<MissingInformation, "id">[];
+}
+
+export type RequirementContextStatus = "AWAITING_CLARIFICATION" | "RESOLVED" | "ERROR";
+
+/**
+ * The living, persisted state of "what do we know about this requirement" -
+ * normalization, facts, assumptions, missing information, and the
+ * clarification dialog. Impact analysis and scoring are only run once this
+ * reaches RESOLVED (no pending clarifications).
+ */
+export interface RequirementContext {
+  id: string;
+  snapshotId: string;
+  requirement: Requirement;
+  normalization: RequirementNormalization | null;
+  knownFacts: KnownFact[];
+  assumptions: Assumption[];
+  missingInformation: MissingInformation[];
+  clarifications: Clarification[];
+  status: RequirementContextStatus;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
 }

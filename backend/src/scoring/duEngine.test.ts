@@ -8,6 +8,7 @@ import {
   calculateWeightedScore,
   classifyConfidence,
   computeDuResult,
+  determineScoringStatus,
   mapScoreToClass,
 } from "./duEngine.js";
 
@@ -24,6 +25,9 @@ function buildScores(
       rationale: { en: "test rationale", de: "Test-Begründung" },
       evidence: [],
       missingInformation: [],
+      factsUsed: [],
+      assumptionsUsed: [],
+      unresolvedRisks: [],
     };
   }
   return scores;
@@ -169,5 +173,39 @@ describe("computeDuResult", () => {
     const result = computeDuResult(scores, 300);
 
     expect(result.confidenceLevel).toBe("LOW");
+  });
+});
+
+describe("determineScoringStatus", () => {
+  const highConfidenceScores = buildScores(
+    Object.fromEntries(DIMENSION_KEYS.map((k) => [k, { score: 3, confidence: 0.9 }])) as never,
+  );
+  const xxlScores = buildScores(
+    Object.fromEntries(DIMENSION_KEYS.map((k) => [k, { score: 5, confidence: 0.9 }])) as never,
+  );
+  const lowConfidenceScores = buildScores(
+    Object.fromEntries(DIMENSION_KEYS.map((k) => [k, { score: 3, confidence: 0.4 }])) as never,
+  );
+
+  it("returns SCORED when confident, in-range, and no assumptions were used", () => {
+    const result = computeDuResult(highConfidenceScores, 300);
+    expect(determineScoringStatus(result, 0)).toBe("SCORED");
+  });
+
+  it("returns ASSESSMENT_WITH_ASSUMPTIONS when confident and in-range but assumptions were relied on", () => {
+    const result = computeDuResult(highConfidenceScores, 300);
+    expect(determineScoringStatus(result, 3)).toBe("ASSESSMENT_WITH_ASSUMPTIONS");
+  });
+
+  it("returns DECOMPOSITION_REQUIRED for XXL regardless of assumptions used", () => {
+    const result = computeDuResult(xxlScores, 300);
+    expect(determineScoringStatus(result, 0)).toBe("DECOMPOSITION_REQUIRED");
+    expect(determineScoringStatus(result, 2)).toBe("DECOMPOSITION_REQUIRED");
+  });
+
+  it("returns NEEDS_CLARIFICATION for LOW confidence even when assumptions were used - assumptions never mask low confidence", () => {
+    const result = computeDuResult(lowConfidenceScores, 300);
+    expect(determineScoringStatus(result, 0)).toBe("NEEDS_CLARIFICATION");
+    expect(determineScoringStatus(result, 5)).toBe("NEEDS_CLARIFICATION");
   });
 });

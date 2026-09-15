@@ -61,7 +61,7 @@ export function RequirementPanel({
 
       <div className="actions">
         <button className="btn primary" onClick={onSubmit} disabled={!canSubmit || loading}>
-          {loading ? "Bewerte…" : "KI-Bewertung starten"}
+          {loading ? "Analysiere Anforderung…" : "Anforderung analysieren"}
         </button>
         {!canSubmit && !loading && (
           <span style={{ fontSize: 12, color: "var(--muted)" }}>

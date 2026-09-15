@@ -9,6 +9,7 @@ import type {
   RepositoryContext,
   RepositorySnapshot,
   RepositorySnapshotSummary,
+  RequirementContext,
   ScoringHistoryEntry,
   ScoringResult,
 } from "../domain/types.js";
@@ -46,6 +47,7 @@ interface ContextRow extends QueryResultRow {
 interface ScoringResultRow extends QueryResultRow {
   id: string;
   snapshot_id: string;
+  requirement_context_id: string | null;
   requirement: ScoringResult["requirement"];
   status: string;
   impact_analysis: ScoringResult["impactAnalysis"];
@@ -53,9 +55,25 @@ interface ScoringResultRow extends QueryResultRow {
   overall_assessment: ScoringResult["overallAssessment"];
   confidence: ScoringResult["confidence"];
   du_result: ScoringResult["duResult"];
+  assumptions_used: string[] | null;
   open_questions: string[] | null;
   error_message: string | null;
   scored_at: Date | null;
+}
+
+interface RequirementContextRow extends QueryResultRow {
+  id: string;
+  snapshot_id: string;
+  requirement: RequirementContext["requirement"];
+  normalization: RequirementContext["normalization"];
+  known_facts: RequirementContext["knownFacts"] | null;
+  assumptions: RequirementContext["assumptions"] | null;
+  missing_information: RequirementContext["missingInformation"] | null;
+  clarifications: RequirementContext["clarifications"] | null;
+  status: string;
+  error_message: string | null;
+  created_at: Date;
+  updated_at: Date;
 }
 
 interface HistoryRow extends QueryResultRow {
@@ -104,6 +122,7 @@ function toScoringResult(row: ScoringResultRow): ScoringResult {
   return {
     id: row.id,
     snapshotId: row.snapshot_id,
+    requirementContextId: row.requirement_context_id,
     requirement: row.requirement,
     status: row.status as ScoringResult["status"],
     impactAnalysis: row.impact_analysis ?? null,
@@ -111,9 +130,27 @@ function toScoringResult(row: ScoringResultRow): ScoringResult {
     overallAssessment: row.overall_assessment ?? null,
     confidence: row.confidence ?? null,
     duResult: row.du_result ?? null,
+    assumptionsUsed: row.assumptions_used ?? [],
     openQuestions: row.open_questions ?? [],
     errorMessage: row.error_message,
     scoredAt: row.scored_at ? row.scored_at.toISOString() : null,
+  };
+}
+
+function toRequirementContext(row: RequirementContextRow): RequirementContext {
+  return {
+    id: row.id,
+    snapshotId: row.snapshot_id,
+    requirement: row.requirement,
+    normalization: row.normalization ?? null,
+    knownFacts: row.known_facts ?? [],
+    assumptions: row.assumptions ?? [],
+    missingInformation: row.missing_information ?? [],
+    clarifications: row.clarifications ?? [],
+    status: row.status as RequirementContext["status"],
+    errorMessage: row.error_message,
+    createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
   };
 }
 
@@ -214,12 +251,59 @@ export class PostgresScoringStore implements ScoringStore {
     };
   }
 
+  createRequirementContextId(): string {
+    return randomUUID();
+  }
+
+  async saveRequirementContext(context: RequirementContext): Promise<void> {
+    await pool.query(
+      `INSERT INTO requirement_contexts
+         (id, snapshot_id, requirement, normalization, known_facts, assumptions, missing_information,
+          clarifications, status, error_message, created_at, updated_at)
+       VALUES ($1, $2, $3::jsonb, $4::jsonb, $5::jsonb, $6::jsonb, $7::jsonb, $8::jsonb, $9, $10, $11, $12)
+       ON CONFLICT (id) DO UPDATE SET
+         normalization = EXCLUDED.normalization,
+         known_facts = EXCLUDED.known_facts,
+         assumptions = EXCLUDED.assumptions,
+         missing_information = EXCLUDED.missing_information,
+         clarifications = EXCLUDED.clarifications,
+         status = EXCLUDED.status,
+         error_message = EXCLUDED.error_message,
+         updated_at = EXCLUDED.updated_at`,
+      [
+        context.id,
+        context.snapshotId,
+        JSON.stringify(context.requirement),
+        context.normalization !== null ? JSON.stringify(context.normalization) : null,
+        JSON.stringify(context.knownFacts),
+        JSON.stringify(context.assumptions),
+        JSON.stringify(context.missingInformation),
+        JSON.stringify(context.clarifications),
+        context.status,
+        context.errorMessage,
+        context.createdAt,
+        context.updatedAt,
+      ],
+    );
+  }
+
+  async getRequirementContext(id: string): Promise<RequirementContext | undefined> {
+    const result = await pool.query<RequirementContextRow>(
+      `SELECT id, snapshot_id, requirement, normalization, known_facts, assumptions, missing_information,
+              clarifications, status, error_message, created_at, updated_at
+       FROM requirement_contexts WHERE id = $1`,
+      [id],
+    );
+    return result.rows[0] ? toRequirementContext(result.rows[0]) : undefined;
+  }
+
   async saveScoringResult(result: ScoringResult): Promise<void> {
     await pool.query(
       `INSERT INTO scoring_results
-         (id, snapshot_id, requirement, status, impact_analysis, dimension_scores, overall_assessment,
-          confidence, du_result, open_questions, error_message, scored_at)
-       VALUES ($1, $2, $3::jsonb, $4, $5::jsonb, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb, $10::jsonb, $11, $12)
+         (id, snapshot_id, requirement_context_id, requirement, status, impact_analysis, dimension_scores,
+          overall_assessment, confidence, du_result, assumptions_used, open_questions, error_message, scored_at)
+       VALUES ($1, $2, $3, $4::jsonb, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb, $10::jsonb, $11::jsonb,
+               $12::jsonb, $13, $14)
        ON CONFLICT (id) DO UPDATE SET
          status = EXCLUDED.status,
          impact_analysis = EXCLUDED.impact_analysis,
@@ -227,12 +311,14 @@ export class PostgresScoringStore implements ScoringStore {
          overall_assessment = EXCLUDED.overall_assessment,
          confidence = EXCLUDED.confidence,
          du_result = EXCLUDED.du_result,
+         assumptions_used = EXCLUDED.assumptions_used,
          open_questions = EXCLUDED.open_questions,
          error_message = EXCLUDED.error_message,
          scored_at = EXCLUDED.scored_at`,
       [
         result.id,
         result.snapshotId,
+        result.requirementContextId,
         JSON.stringify(result.requirement),
         result.status,
         result.impactAnalysis !== null ? JSON.stringify(result.impactAnalysis) : null,
@@ -240,6 +326,7 @@ export class PostgresScoringStore implements ScoringStore {
         result.overallAssessment !== null ? JSON.stringify(result.overallAssessment) : null,
         result.confidence !== null ? JSON.stringify(result.confidence) : null,
         result.duResult !== null ? JSON.stringify(result.duResult) : null,
+        JSON.stringify(result.assumptionsUsed),
         JSON.stringify(result.openQuestions),
         result.errorMessage,
         result.scoredAt,
@@ -249,8 +336,8 @@ export class PostgresScoringStore implements ScoringStore {
 
   async getScoringResult(id: string): Promise<ScoringResult | undefined> {
     const result = await pool.query<ScoringResultRow>(
-      `SELECT id, snapshot_id, requirement, status, impact_analysis, dimension_scores, overall_assessment,
-              confidence, du_result, open_questions, error_message, scored_at
+      `SELECT id, snapshot_id, requirement_context_id, requirement, status, impact_analysis, dimension_scores,
+              overall_assessment, confidence, du_result, assumptions_used, open_questions, error_message, scored_at
        FROM scoring_results WHERE id = $1`,
       [id],
     );

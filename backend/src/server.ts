@@ -1,5 +1,6 @@
 import cors from "cors";
 import express from "express";
+import { requirementContextRouter } from "./api/requirementContextRoutes.js";
 import { requirementRouter } from "./api/requirementRoutes.js";
 import { repositoryRouter } from "./api/repositoryRoutes.js";
 import { config } from "./config.js";
@@ -26,6 +27,7 @@ async function main(): Promise<void> {
   });
 
   app.use("/api/repository", repositoryRouter);
+  app.use("/api/requirement-context", requirementContextRouter);
   app.use("/api/requirement", requirementRouter);
 
   // Centralized error handler: never leak internal stack traces to the

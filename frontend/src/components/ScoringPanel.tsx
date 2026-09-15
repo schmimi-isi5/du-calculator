@@ -55,6 +55,14 @@ export function ScoringPanel({ loading, result, language, onChangeLanguage }: Pr
         </div>
       )}
 
+      {result?.status === "ASSESSMENT_WITH_ASSUMPTIONS" && (
+        <div className="notice" style={{ marginTop: 10 }}>
+          Vorläufige Bewertung: basiert auf {result.assumptionsUsed.length} dokumentierten Annahme
+          {result.assumptionsUsed.length === 1 ? "" : "n"} (siehe „Getroffene Annahmen“ oben). Du kannst sie
+          bestätigen, bearbeiten oder verwerfen und danach neu bewerten lassen.
+        </div>
+      )}
+
       {result?.overallAssessment && (
         <div className="overall-assessment">
           <strong style={{ fontSize: 13 }}>Gesamteinschätzung · Overall Assessment</strong>
@@ -102,6 +110,15 @@ export function ScoringPanel({ loading, result, language, onChangeLanguage }: Pr
                       <code className="file-path">{ev.file}</code> — {ev.reason}
                     </div>
                   ))}
+                  {dim.factsUsed.length > 0 && (
+                    <div className="dim-trace">Fakten: {dim.factsUsed.join("; ")}</div>
+                  )}
+                  {dim.assumptionsUsed.length > 0 && (
+                    <div className="dim-trace">Annahmen verwendet: {dim.assumptionsUsed.length}</div>
+                  )}
+                  {dim.unresolvedRisks.length > 0 && (
+                    <div className="dim-missing">Ungelöste Risiken: {dim.unresolvedRisks.join("; ")}</div>
+                  )}
                   {dim.missingInformation.length > 0 && (
                     <div className="dim-missing">Fehlende Information: {dim.missingInformation.join("; ")}</div>
                   )}

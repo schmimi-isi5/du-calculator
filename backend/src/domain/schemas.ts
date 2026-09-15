@@ -65,6 +65,11 @@ const DimensionScoreSchema = z.object({
   evidence: z.array(EvidenceSchema),
   confidence: z.number().min(0).max(1),
   missingInformation: z.array(z.string()),
+  factsUsed: z.array(z.string()).describe("Short descriptions of the known facts this score relied on."),
+  assumptionsUsed: z
+    .array(z.string())
+    .describe("The exact assumption id(s) (as given in the ASSUMPTIONS list) this score relied on, if any."),
+  unresolvedRisks: z.array(z.string()).describe("Risks that remain even after applying facts and assumptions."),
 });
 
 /**
@@ -94,4 +99,88 @@ export const ScoringOutputSchema = z.object({
   overallAssessment: LocalizedTextSchema.describe(
     "2-4 sentences per language characterizing the overall scope, complexity, and risk across all eight dimensions together.",
   ),
+});
+
+// ---------------------------------------------------------------------------
+// Assumption & Clarification Engine schemas
+// ---------------------------------------------------------------------------
+
+const DimensionKeySchema = z.enum([
+  "functionalScope",
+  "technicalComplexity",
+  "dataIntegration",
+  "aiComplexity",
+  "automation",
+  "testingQA",
+  "deploymentOperations",
+  "uncertaintyRisk",
+]);
+
+const ScoreImpactSchema = z
+  .union([z.literal(0), z.literal(1), z.literal(2)])
+  .describe(
+    "0 = practically no influence on scoring. 1 = could move roughly one dimension by about one score point. " +
+      "2 = could move several dimensions, or change the resulting DU class.",
+  );
+
+export const KnownFactSchema = z.object({
+  topic: z.string(),
+  fact: z.string().describe("The fact itself, stated plainly - never invented, always traceable to a source."),
+  source: z.enum(["REQUIREMENT", "ACCEPTANCE_CRITERIA", "CLARIFICATION_ANSWER", "REPOSITORY", "DERIVED"]),
+  evidence: z
+    .array(EvidenceSchema)
+    .describe("Repository evidence for this fact, if source is REPOSITORY or DERIVED from it. Empty otherwise."),
+});
+
+export const AssumptionOutputSchema = z.object({
+  topic: z.string(),
+  assumption: z.string().describe("The plausible stand-in used for scoring - must never be phrased as a fact."),
+  reason: z.string().describe("Why this assumption is plausible given the requirement and repository."),
+  basis: z
+    .array(z.string())
+    .describe('Free-text citations, e.g. "Requirement", "Acceptance Criteria", or a repository file path.'),
+  confidence: z.number().min(0).max(1),
+  affectedDimensions: z.array(DimensionKeySchema),
+  potentialScoreImpact: ScoreImpactSchema,
+  criticality: z.enum(["LOW", "MEDIUM", "HIGH"]),
+});
+
+export const MissingInformationOutputSchema = z.object({
+  topic: z.string(),
+  question: z.string().describe("The underlying question this gap represents, even if it is never asked to the user."),
+  classification: z.enum(["FACT", "DERIVED", "ASSUMPTION", "CLARIFICATION_REQUIRED", "UNKNOWN_NON_BLOCKING"]),
+  potentialScoreImpact: ScoreImpactSchema,
+  affectedDimensions: z.array(DimensionKeySchema),
+  reasoning: z
+    .string()
+    .describe("Why this classification was chosen - which source hierarchy step resolved it, or why none could."),
+});
+
+export const RequirementNormalizationSchema = z.object({
+  objective: z.string(),
+  businessGoal: z.string(),
+  functionalRequirements: z.array(z.string()),
+  nonFunctionalRequirements: z.array(z.string()),
+  acceptanceCriteria: z.array(z.string()),
+  technicalConstraints: z.array(z.string()),
+  mentionedSystems: z.array(z.string()),
+  mentionedDataSources: z.array(z.string()),
+  mentionedIntegrations: z.array(z.string()),
+  mentionedExistingComponents: z.array(z.string()),
+  assumptionsAlreadyContainedInRequirement: z.array(z.string()),
+  unresolvedInformation: z.array(z.string()),
+});
+
+/**
+ * Output of AIProvider.resolveRequirementContext - normalization, known
+ * facts, assumptions, and every detected information gap with its
+ * classification. The app (not the AI) turns CLARIFICATION_REQUIRED items
+ * into an actual prioritized, capped clarification dialog - see
+ * scoring/clarificationGate.ts.
+ */
+export const ContextResolutionOutputSchema = z.object({
+  normalization: RequirementNormalizationSchema,
+  knownFacts: z.array(KnownFactSchema),
+  assumptions: z.array(AssumptionOutputSchema),
+  missingInformation: z.array(MissingInformationOutputSchema),
 });

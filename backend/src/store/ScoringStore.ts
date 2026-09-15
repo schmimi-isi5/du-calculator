@@ -2,17 +2,20 @@ import type {
   RepositoryContext,
   RepositorySnapshot,
   RepositorySnapshotSummary,
+  RequirementContext,
   ScoringHistoryEntry,
   ScoringResult,
 } from "../domain/types.js";
 
 /**
  * Persistence for the domain history: repository snapshots (including the
- * RepositoryContext they were analyzed with), and the requirement -> DU
- * decisions scored against them. Backed by Postgres (see
- * PostgresScoringStore.ts) so a repository, once analyzed, can be reused for
- * further requirements without re-cloning or re-running the AI analysis -
- * and so the history survives restarts and is queryable.
+ * RepositoryContext they were analyzed with), resolved requirement contexts
+ * (facts/assumptions/clarifications), and the requirement -> DU decisions
+ * scored from them. Backed by Postgres (see PostgresScoringStore.ts) so a
+ * repository, once analyzed, can be reused for further requirements without
+ * re-cloning or re-running the AI analysis - and so the full history,
+ * including why a given DU result was reached, survives restarts and is
+ * queryable.
  */
 export interface ScoringStore {
   createSnapshotId(): string;
@@ -25,6 +28,10 @@ export interface ScoringStore {
   /** The file excerpts a snapshot was analyzed with - needed to score further requirements against it. */
   saveRepositoryContext(snapshotId: string, context: RepositoryContext): Promise<void>;
   getRepositoryContext(snapshotId: string): Promise<RepositoryContext | undefined>;
+
+  createRequirementContextId(): string;
+  saveRequirementContext(context: RequirementContext): Promise<void>;
+  getRequirementContext(id: string): Promise<RequirementContext | undefined>;
 
   createScoringId(): string;
   saveScoringResult(result: ScoringResult): Promise<void>;
