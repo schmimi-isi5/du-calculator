@@ -1,7 +1,7 @@
 import { useState } from "react";
 import {
   analyzeRepository,
-  answerClarification,
+  answerClarifications,
   ApiError,
   applyAssumptionAction,
   getRepositorySnapshot,
@@ -129,12 +129,12 @@ export default function App() {
     }
   }
 
-  async function handleAnswerClarification(clarificationId: string, answer: string) {
-    if (!requirementContext) return;
+  async function handleAnswerClarifications(answers: { clarificationId: string; answer: string }[]) {
+    if (!requirementContext || answers.length === 0) return;
     setContextLoading(true);
     setContextRequestError(null);
     try {
-      const updated = await answerClarification(requirementContext.id, clarificationId, answer);
+      const updated = await answerClarifications(requirementContext.id, answers);
       setRequirementContext(updated);
     } catch (err) {
       setContextRequestError(err instanceof ApiError ? err.message : "Unerwarteter Fehler.");
@@ -288,17 +288,23 @@ export default function App() {
 
                 {contextRequestError && <div className="notice error">{contextRequestError}</div>}
 
-                {requirementContext && requirementContext.status !== "ERROR" && (
+                {requirementContext?.status === "ERROR" && requirementContext.errorMessage && (
+                  <div className="notice error">
+                    {requirementContext.errorMessage} Der bisherige Wissensstand bleibt unten erhalten -
+                    du kannst es erneut versuchen.
+                  </div>
+                )}
+
+                {/* Rendered regardless of status (including ERROR): a failed re-resolution
+                    attempt must never hide facts/assumptions/questions already established -
+                    they are still valid and still persisted, only the latest round failed. */}
+                {requirementContext && (
                   <RequirementContextPanel
                     context={requirementContext}
                     busy={contextLoading}
-                    onAnswerClarification={handleAnswerClarification}
+                    onAnswerClarifications={handleAnswerClarifications}
                     onAssumptionAction={handleAssumptionAction}
                   />
-                )}
-
-                {requirementContext?.status === "ERROR" && requirementContext.errorMessage && (
-                  <div className="notice error">{requirementContext.errorMessage}</div>
                 )}
 
                 {isContextResolved && (
@@ -326,7 +332,7 @@ export default function App() {
                     <RequirementContextPanel
                       context={requirementContext}
                       busy={contextLoading}
-                      onAnswerClarification={handleAnswerClarification}
+                      onAnswerClarifications={handleAnswerClarifications}
                       onAssumptionAction={handleAssumptionAction}
                     />
                   )}

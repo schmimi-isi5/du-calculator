@@ -1,17 +1,30 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Assumption, AssumptionAction, Clarification, RequirementContext } from "../types";
 
 interface Props {
   context: RequirementContext;
   busy: boolean;
-  onAnswerClarification: (clarificationId: string, answer: string) => void;
+  onAnswerClarifications: (answers: { clarificationId: string; answer: string }[]) => void;
   onAssumptionAction: (assumptionId: string, action: AssumptionAction, editedText?: string) => void;
 }
 
-export function RequirementContextPanel({ context, busy, onAnswerClarification, onAssumptionAction }: Props) {
+export function RequirementContextPanel({ context, busy, onAnswerClarifications, onAssumptionAction }: Props) {
   const pending = context.clarifications
     .filter((c) => c.status === "PENDING")
     .sort((a, b) => a.priority - b.priority);
+
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+
+  // A fresh resolution round can replace the whole pending set with
+  // different questions (new ids) - drop drafts for a different context so
+  // they never carry over into an unrelated round.
+  useEffect(() => {
+    setDrafts({});
+  }, [context.id]);
+
+  const filledAnswers = pending
+    .map((c) => ({ clarificationId: c.id, answer: (drafts[c.id] ?? "").trim() }))
+    .filter((a) => a.answer.length > 0);
 
   return (
     <div className="card">
@@ -29,16 +42,29 @@ export function RequirementContextPanel({ context, busy, onAnswerClarification, 
           <div className="context-section-title">Klärungsbedarf</div>
           <p className="context-hint">
             Nur diese {pending.length} Frage{pending.length > 1 ? "n" : ""} beeinflusst die Bewertung wesentlich -
-            alles andere wurde automatisch angenommen.
+            alles andere wurde automatisch angenommen. Beantworte so viele wie du kannst und übernimm sie
+            gemeinsam.
           </p>
           {pending.map((clarification) => (
             <ClarificationQuestion
               key={clarification.id}
               clarification={clarification}
-              busy={busy}
-              onAnswer={(answer) => onAnswerClarification(clarification.id, answer)}
+              value={drafts[clarification.id] ?? ""}
+              disabled={busy}
+              onChange={(value) => setDrafts((prev) => ({ ...prev, [clarification.id]: value }))}
             />
           ))}
+          <div className="actions">
+            <button
+              className="btn primary"
+              disabled={busy || filledAnswers.length === 0}
+              onClick={() => onAnswerClarifications(filledAnswers)}
+            >
+              {busy
+                ? "Wird verarbeitet…"
+                : `Antworten übernehmen${filledAnswers.length > 0 ? ` (${filledAnswers.length})` : ""}`}
+            </button>
+          </div>
         </div>
       )}
 
@@ -79,33 +105,25 @@ export function RequirementContextPanel({ context, busy, onAnswerClarification, 
 
 function ClarificationQuestion({
   clarification,
-  busy,
-  onAnswer,
+  value,
+  disabled,
+  onChange,
 }: {
   clarification: Clarification;
-  busy: boolean;
-  onAnswer: (answer: string) => void;
+  value: string;
+  disabled: boolean;
+  onChange: (value: string) => void;
 }) {
-  const [draft, setDraft] = useState("");
-
   return (
     <div className="clarification-question">
       <div className="clarification-question-text">{clarification.question}</div>
       <textarea
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
         placeholder="Antwort eingeben…"
         rows={2}
       />
-      <div className="actions">
-        <button
-          className="btn primary"
-          disabled={busy || draft.trim().length === 0}
-          onClick={() => onAnswer(draft.trim())}
-        >
-          {busy ? "Wird verarbeitet…" : "Antworten"}
-        </button>
-      </div>
     </div>
   );
 }

@@ -84,14 +84,13 @@ export function getRequirementContext(id: string): Promise<RequirementContext> {
   return getJson<RequirementContext>(`/api/requirement-context/${encodeURIComponent(id)}`);
 }
 
-export function answerClarification(
+export function answerClarifications(
   contextId: string,
-  clarificationId: string,
-  answer: string,
+  answers: { clarificationId: string; answer: string }[],
 ): Promise<RequirementContext> {
   return postJson<RequirementContext>(
-    `/api/requirement-context/${encodeURIComponent(contextId)}/clarifications/${encodeURIComponent(clarificationId)}/answer`,
-    { answer },
+    `/api/requirement-context/${encodeURIComponent(contextId)}/clarifications/answer`,
+    { answers },
   );
 }
 
