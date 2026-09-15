@@ -63,6 +63,33 @@ export function ScoringPanel({ loading, result, language, onChangeLanguage }: Pr
         </div>
       )}
 
+      {result?.requirement && (
+        <div className="profile-section">
+          <strong style={{ fontSize: 13 }}>{result.requirement.title}</strong>
+          <p style={{ margin: "6px 0 0", fontSize: 13 }}>{result.requirement.description}</p>
+          {result.requirement.acceptanceCriteria.length > 0 && (
+            <>
+              <div style={{ fontSize: 12, fontWeight: 800, marginTop: 8 }}>Akzeptanzkriterien</div>
+              <ul className="context-list">
+                {result.requirement.acceptanceCriteria.map((criterion, i) => (
+                  <li key={i}>{criterion}</li>
+                ))}
+              </ul>
+            </>
+          )}
+          {result.requirement.constraints.length > 0 && (
+            <>
+              <div style={{ fontSize: 12, fontWeight: 800, marginTop: 8 }}>Randbedingungen</div>
+              <ul className="context-list">
+                {result.requirement.constraints.map((constraint, i) => (
+                  <li key={i}>{constraint}</li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
+
       {result?.overallAssessment && (
         <div className="overall-assessment">
           <strong style={{ fontSize: 13 }}>Gesamteinschätzung · Overall Assessment</strong>
