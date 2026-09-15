@@ -77,6 +77,31 @@ export interface Requirement {
   constraints: string[];
 }
 
+/** How thoroughly one pass (resolution + assessment) is run - fixed for a RequirementContext's whole lifetime once chosen. */
+export type QualityLevel = "quick" | "standard" | "thorough";
+
+export interface QualityLevelMeta {
+  label: string;
+  description: string;
+}
+
+export const QUALITY_LEVEL_META: Record<QualityLevel, QualityLevelMeta> = {
+  quick: {
+    label: "Grobschätzung",
+    description: "Schnell, weniger Rückfragen, kompaktere Begründungen.",
+  },
+  standard: {
+    label: "Standardschätzung",
+    description: "Ausgewogen zwischen Geschwindigkeit und Gründlichkeit.",
+  },
+  thorough: {
+    label: "Feinschätzung",
+    description: "Gründlichste Analyse, ausführlichere Begründungen, mehr mögliche Rückfragen.",
+  },
+};
+
+export const QUALITY_LEVEL_ORDER: QualityLevel[] = ["quick", "standard", "thorough"];
+
 export interface ImpactAnalysis {
   existing: string[];
   reusable: string[];
@@ -137,6 +162,7 @@ export interface ScoringResult {
   snapshotId: string;
   requirementContextId: string | null;
   requirement: Requirement;
+  qualityLevel: QualityLevel;
   status: ScoringStatus;
   impactAnalysis: ImpactAnalysis | null;
   dimensionScores: DimensionScores | null;
@@ -224,6 +250,7 @@ export interface RequirementContext {
   id: string;
   snapshotId: string;
   requirement: Requirement;
+  qualityLevel: QualityLevel;
   normalization: RequirementNormalization | null;
   knownFacts: KnownFact[];
   assumptions: Assumption[];

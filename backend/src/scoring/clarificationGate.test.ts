@@ -18,6 +18,7 @@ import type {
   MissingInformation,
   RequirementContext,
 } from "../domain/types.js";
+import { QUALITY_PROFILES } from "../domain/qualityLevels.js";
 import {
   activeAssumptions,
   applyAssumptionAction,
@@ -26,10 +27,10 @@ import {
   buildResolvedContextParts,
   ClarificationNotFoundError,
   hasPendingClarifications,
-  MAX_CLARIFICATIONS_PER_ROUND,
-  MAX_RESOLUTION_ROUNDS,
   pendingClarifications,
 } from "./clarificationGate.js";
+
+const MAX_CLARIFICATIONS_PER_ROUND = QUALITY_PROFILES.standard.maxClarificationsPerRound;
 
 function missing(overrides: Partial<Omit<MissingInformation, "id">> = {}): Omit<MissingInformation, "id"> {
   return {
@@ -149,7 +150,7 @@ describe("buildResolvedContextParts - classification scenarios", () => {
     expect(result.clarifications.filter((c) => c.question.includes("impact-2"))).toHaveLength(2);
   });
 
-  it("asks nothing new once allowNewClarifications is false, regardless of what the AI flagged", () => {
+  it("asks nothing new once maxNewClarifications is 0, regardless of what the AI flagged", () => {
     const result = buildResolvedContextParts(
       output({
         missingInformation: [
@@ -158,7 +159,7 @@ describe("buildResolvedContextParts - classification scenarios", () => {
         ],
       }),
       [],
-      false,
+      0,
     );
 
     expect(result.clarifications).toHaveLength(0);
@@ -166,7 +167,7 @@ describe("buildResolvedContextParts - classification scenarios", () => {
     expect(result.missingInformation.some((m) => m.classification === "CLARIFICATION_REQUIRED")).toBe(true);
   });
 
-  it("still carries forward previously answered clarifications when allowNewClarifications is false", () => {
+  it("still carries forward previously answered clarifications when maxNewClarifications is 0", () => {
     const answered: Clarification = {
       id: "answered-1",
       missingInformationId: "m1",
@@ -182,15 +183,18 @@ describe("buildResolvedContextParts - classification scenarios", () => {
         missingInformation: [missing({ classification: "CLARIFICATION_REQUIRED", question: "New question" })],
       }),
       [answered],
-      false,
+      0,
     );
 
     expect(result.clarifications).toEqual([answered]);
   });
 
-  it("MAX_RESOLUTION_ROUNDS is a small, finite cap (the app enforces it in requirementContextService.ts)", () => {
-    expect(MAX_RESOLUTION_ROUNDS).toBeGreaterThan(0);
-    expect(MAX_RESOLUTION_ROUNDS).toBeLessThanOrEqual(3);
+  it("every quality profile's clarification caps are small and finite", () => {
+    for (const profile of Object.values(QUALITY_PROFILES)) {
+      expect(profile.maxClarificationsPerRound).toBeGreaterThan(0);
+      expect(profile.maxResolutionRounds).toBeGreaterThan(0);
+      expect(profile.maxResolutionRounds).toBeLessThanOrEqual(3);
+    }
   });
 
   it("does not re-ask a question that was already answered in a prior round", () => {
@@ -269,6 +273,7 @@ function buildContext(overrides: Partial<RequirementContext> = {}): RequirementC
     id: "ctx-1",
     snapshotId: "snap-1",
     requirement: { title: "t", description: "d", acceptanceCriteria: [], constraints: [] },
+    qualityLevel: "standard",
     normalization: null,
     knownFacts: [],
     assumptions: [],

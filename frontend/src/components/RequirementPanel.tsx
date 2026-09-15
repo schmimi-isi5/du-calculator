@@ -1,14 +1,19 @@
+import { QUALITY_LEVEL_META, QUALITY_LEVEL_ORDER } from "../types";
+import type { QualityLevel } from "../types";
+
 interface Props {
   title: string;
   description: string;
   acceptanceCriteria: string;
   constraints: string;
+  qualityLevel: QualityLevel;
   canSubmit: boolean;
   loading: boolean;
   onChangeTitle: (v: string) => void;
   onChangeDescription: (v: string) => void;
   onChangeAcceptanceCriteria: (v: string) => void;
   onChangeConstraints: (v: string) => void;
+  onChangeQualityLevel: (v: QualityLevel) => void;
   onSubmit: () => void;
 }
 
@@ -17,12 +22,14 @@ export function RequirementPanel({
   description,
   acceptanceCriteria,
   constraints,
+  qualityLevel,
   canSubmit,
   loading,
   onChangeTitle,
   onChangeDescription,
   onChangeAcceptanceCriteria,
   onChangeConstraints,
+  onChangeQualityLevel,
   onSubmit,
 }: Props) {
   return (
@@ -57,6 +64,25 @@ export function RequirementPanel({
             placeholder="Datenschutz, Performance, Ausschlüsse …"
           />
         </div>
+      </div>
+
+      <label htmlFor="qualityLevel">Qualitätsstufe</label>
+      <div className="quality-level-picker" id="qualityLevel">
+        {QUALITY_LEVEL_ORDER.map((level) => {
+          const meta = QUALITY_LEVEL_META[level];
+          return (
+            <button
+              key={level}
+              type="button"
+              className={`quality-level-option ${qualityLevel === level ? "active" : ""}`}
+              onClick={() => onChangeQualityLevel(level)}
+              disabled={loading}
+            >
+              <span className="quality-level-option-label">{meta.label}</span>
+              <span className="quality-level-option-description">{meta.description}</span>
+            </button>
+          );
+        })}
       </div>
 
       <div className="actions">

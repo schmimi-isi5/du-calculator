@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { QUALITY_LEVEL_META } from "../types";
 import type { Assumption, AssumptionAction, Clarification, RequirementContext } from "../types";
 
 interface Props {
@@ -28,7 +29,10 @@ export function RequirementContextPanel({ context, busy, onAnswerClarifications,
 
   return (
     <div className="card">
-      <h2>Wissensstand zur Anforderung</h2>
+      <div className="actions" style={{ marginTop: 0, justifyContent: "space-between" }}>
+        <h2 style={{ margin: 0 }}>Wissensstand zur Anforderung</h2>
+        <span className="tag">{QUALITY_LEVEL_META[context.qualityLevel].label}</span>
+      </div>
 
       {busy && (
         <div className="notice progress">

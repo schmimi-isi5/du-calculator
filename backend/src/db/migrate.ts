@@ -51,10 +51,16 @@ CREATE TABLE IF NOT EXISTS requirement_contexts (
 
 CREATE INDEX IF NOT EXISTS idx_requirement_contexts_snapshot_id ON requirement_contexts (snapshot_id);
 
--- How many resolution rounds have run - once this reaches
--- scoring/clarificationGate.ts MAX_RESOLUTION_ROUNDS, no further
+-- How many resolution rounds have run - once this reaches the chosen
+-- QualityLevel's maxResolutionRounds (domain/qualityLevels.ts), no further
 -- clarification question is ever asked for this context.
 ALTER TABLE requirement_contexts ADD COLUMN IF NOT EXISTS resolution_rounds INTEGER NOT NULL DEFAULT 0;
+
+-- Which QualityLevel (quick/standard/thorough) this run was resolved at -
+-- fixed for the context's whole lifetime once chosen on the first round.
+-- Existing rows default to 'standard', the level all of them were actually
+-- run at before this column existed.
+ALTER TABLE requirement_contexts ADD COLUMN IF NOT EXISTS quality_level TEXT NOT NULL DEFAULT 'standard';
 
 CREATE TABLE IF NOT EXISTS scoring_results (
   id UUID PRIMARY KEY,
@@ -78,6 +84,10 @@ CREATE TABLE IF NOT EXISTS scoring_results (
 -- "why was this requirement scored at X DU on this date".
 ALTER TABLE scoring_results ADD COLUMN IF NOT EXISTS requirement_context_id UUID REFERENCES requirement_contexts(id);
 ALTER TABLE scoring_results ADD COLUMN IF NOT EXISTS assumptions_used JSONB NOT NULL DEFAULT '[]';
+-- Which QualityLevel this assessment was scored at - existing rows default
+-- to 'standard', the level all of them were actually run at before this
+-- column existed.
+ALTER TABLE scoring_results ADD COLUMN IF NOT EXISTS quality_level TEXT NOT NULL DEFAULT 'standard';
 
 CREATE INDEX IF NOT EXISTS idx_scoring_results_created_at ON scoring_results (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_scoring_results_snapshot_id ON scoring_results (snapshot_id);

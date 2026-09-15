@@ -189,6 +189,8 @@ export interface ScoringResult {
   /** The resolved RequirementContext this assessment was scored from - the audit trail back to facts/assumptions used. */
   requirementContextId: string | null;
   requirement: Requirement;
+  /** Which quality level (see QualityLevel) this run was scored at - part of the audit trail for "why was this X DU". */
+  qualityLevel: QualityLevel;
   status: ScoringStatus;
   impactAnalysis: ImpactAnalysis | null;
   dimensionScores: DimensionScores | null;
@@ -334,6 +336,15 @@ export interface ContextResolutionOutput {
 export type RequirementContextStatus = "AWAITING_CLARIFICATION" | "RESOLVED" | "ERROR";
 
 /**
+ * How thoroughly one pass (resolution + assessment) is run - chosen once
+ * when a requirement is first submitted and then fixed for that
+ * RequirementContext's whole lifetime (every clarification round and the
+ * final scoring reuse it), so a run never drifts between depths partway
+ * through. See domain/qualityLevels.ts for what each level actually tunes.
+ */
+export type QualityLevel = "quick" | "standard" | "thorough";
+
+/**
  * The living, persisted state of "what do we know about this requirement" -
  * normalization, facts, assumptions, missing information, and the
  * clarification dialog. Impact analysis and scoring are only run once this
@@ -343,13 +354,14 @@ export interface RequirementContext {
   id: string;
   snapshotId: string;
   requirement: Requirement;
+  qualityLevel: QualityLevel;
   normalization: RequirementNormalization | null;
   knownFacts: KnownFact[];
   assumptions: Assumption[];
   missingInformation: MissingInformation[];
   clarifications: Clarification[];
   status: RequirementContextStatus;
-  /** How many resolution rounds have run - see scoring/clarificationGate.ts MAX_RESOLUTION_ROUNDS. */
+  /** How many resolution rounds have run - see domain/qualityLevels.ts maxResolutionRounds. */
   resolutionRounds: number;
   errorMessage: string | null;
   createdAt: string;

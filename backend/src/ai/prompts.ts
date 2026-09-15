@@ -3,6 +3,8 @@
 // request/response plumbing.
 
 import type { Clarification, Requirement, RepositoryContext, RepositoryProfile } from "../domain/types.js";
+import { QUALITY_PROFILES } from "../domain/qualityLevels.js";
+import type { QualityLevel } from "../domain/types.js";
 import type { RepositoryIdentity, ResolvedRequirementKnowledge } from "./AIProvider.js";
 
 const EVIDENCE_RULES = `
@@ -185,10 +187,13 @@ export function buildContextResolutionPrompt(
   profile: RepositoryProfile,
   context: RepositoryContext,
   answeredClarifications: Clarification[],
+  qualityLevel: QualityLevel,
 ): PromptParts {
   const system = `You are running the "Assumption & Clarification" stage of the ISIFIVE DU Calculator, before any impact analysis or scoring happens. Your job is NOT to ask the user everything you don't know - it is to resolve as much as possible yourself, and flag only what truly needs a human decision.
 
 Core principle: a missing piece of information is not automatically a question. Only information whose uncertainty would materially change scope, architecture, risk, acceptance, or the DU result should ever become a clarification question - and only after every other source has failed to resolve it.
+
+${QUALITY_PROFILES[qualityLevel].rationaleGuidance}
 
 ${INFORMATION_CLASS_RULES}
 
@@ -282,6 +287,7 @@ export function buildAssessmentPrompt(
   profile: RepositoryProfile,
   context: RepositoryContext,
   knowledge: ResolvedRequirementKnowledge,
+  qualityLevel: QualityLevel,
 ): PromptParts {
   const system = `You are a senior software architect performing a Requirement Impact Analysis and DU scoring for the ISIFIVE DU Calculator, in one pass. First determine what already exists, what can be reused, what must be modified, and what must be newly created for this requirement against a repository you have already profiled. Then, using that same analysis, score each of the eight fixed dimensions 1 (very low) to 5 (very high), with a summary, a detailed rationale, evidence, a confidence (0.0-1.0), and any missing information that limits your confidence - plus one overall assessment synthesizing all eight dimensions. You NEVER decide a final Development Unit count or price - that is computed deterministically by the application from your per-dimension scores.
 
@@ -294,6 +300,8 @@ ${REUSE_RULE}
 ${BILINGUAL_RULE}
 
 ${ASSUMPTION_AWARE_SCORING_RULE}
+
+${QUALITY_PROFILES[qualityLevel].rationaleGuidance}
 
 Known facts and documented assumptions for this requirement are provided below - build on them rather than re-deriving them, and do not raise questions about things they already resolve. If you lack information to score a dimension confidently, say so explicitly in missingInformation and lower that dimension's confidence accordingly - do not compensate by guessing a score you cannot support.
 

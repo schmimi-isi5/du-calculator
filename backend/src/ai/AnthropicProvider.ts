@@ -13,11 +13,13 @@ import {
 import type {
   Clarification,
   ContextResolutionOutput,
+  QualityLevel,
   Requirement,
   RepositoryContext,
   RepositoryProfile,
   RequirementAssessment,
 } from "../domain/types.js";
+import { QUALITY_PROFILES, type EffortLevel } from "../domain/qualityLevels.js";
 import type { AIProvider, RepositoryIdentity, ResolvedRequirementKnowledge, UsageContext } from "./AIProvider.js";
 import { AIProviderError } from "./AIProvider.js";
 import {
@@ -31,19 +33,14 @@ import { recordUsage } from "./usageTracker.js";
 const DEFAULT_MODEL = "claude-opus-5";
 const MAX_TOKENS = 16000;
 
-type EffortLevel = "low" | "medium" | "high" | "xhigh" | "max";
-
-// Repository analysis and requirement-context resolution are classification/
-// extraction-shaped work, where Anthropic's own measured effort curves are
-// close to flat - "medium" holds accuracy at meaningfully lower latency and
-// cost. Scoring keeps "high": it is the one step where nuanced, defensible
-// judgment across eight weighted dimensions directly determines the DU
-// result, so it's the wrong place to trade quality for speed.
-const EFFORT_BY_STEP: Record<string, EffortLevel> = {
-  analyzeRepository: "medium",
-  resolveRequirementContext: "medium",
-  assessRequirement: "high",
-};
+// Repository analysis has no per-run QualityLevel to read (the file excerpts
+// it works from are fixed at analysis time, before any requirement exists) -
+// classification/extraction-shaped work, where Anthropic's own measured
+// effort curves are close to flat, so a fixed "medium" holds accuracy at
+// meaningfully lower latency and cost regardless of what a later requirement
+// chooses. resolveRequirementContext/assessRequirement use the run's chosen
+// QualityLevel instead (see domain/qualityLevels.ts).
+const REPOSITORY_ANALYSIS_EFFORT: EffortLevel = "medium";
 
 // Every call re-sends the repository profile + file excerpts (often tens of
 // thousands of tokens) unchanged across a clarification round's repeated
@@ -68,7 +65,13 @@ export class AnthropicProvider implements AIProvider {
     usage: UsageContext,
   ): Promise<RepositoryProfile> {
     const prompt = buildRepositoryAnalysisPrompt(repository, context);
-    return this.parse<RepositoryProfile>(prompt, RepositoryProfileSchema, "analyzeRepository", usage);
+    return this.parse<RepositoryProfile>(
+      prompt,
+      RepositoryProfileSchema,
+      "analyzeRepository",
+      REPOSITORY_ANALYSIS_EFFORT,
+      usage,
+    );
   }
 
   async resolveRequirementContext(
@@ -76,13 +79,15 @@ export class AnthropicProvider implements AIProvider {
     profile: RepositoryProfile,
     context: RepositoryContext,
     answeredClarifications: Clarification[],
+    qualityLevel: QualityLevel,
     usage: UsageContext,
   ): Promise<ContextResolutionOutput> {
-    const prompt = buildContextResolutionPrompt(requirement, profile, context, answeredClarifications);
+    const prompt = buildContextResolutionPrompt(requirement, profile, context, answeredClarifications, qualityLevel);
     return this.parse<ContextResolutionOutput>(
       prompt,
       ContextResolutionOutputSchema,
       "resolveRequirementContext",
+      QUALITY_PROFILES[qualityLevel].resolutionEffort,
       usage,
     );
   }
@@ -92,16 +97,24 @@ export class AnthropicProvider implements AIProvider {
     profile: RepositoryProfile,
     context: RepositoryContext,
     knowledge: ResolvedRequirementKnowledge,
+    qualityLevel: QualityLevel,
     usage: UsageContext,
   ): Promise<RequirementAssessment> {
-    const prompt = buildAssessmentPrompt(requirement, profile, context, knowledge);
-    return this.parse<RequirementAssessment>(prompt, RequirementAssessmentSchema, "assessRequirement", usage);
+    const prompt = buildAssessmentPrompt(requirement, profile, context, knowledge, qualityLevel);
+    return this.parse<RequirementAssessment>(
+      prompt,
+      RequirementAssessmentSchema,
+      "assessRequirement",
+      QUALITY_PROFILES[qualityLevel].assessmentEffort,
+      usage,
+    );
   }
 
   private async parse<T>(
     prompt: PromptParts,
     schema: Parameters<typeof betaZodOutputFormat>[0],
     step: string,
+    effort: EffortLevel,
     usage: UsageContext,
   ): Promise<T> {
     try {
@@ -118,7 +131,7 @@ export class AnthropicProvider implements AIProvider {
         model: this.model,
         max_tokens: MAX_TOKENS,
         thinking: { type: "adaptive" },
-        output_config: { effort: EFFORT_BY_STEP[step] ?? "high" },
+        output_config: { effort },
         output_format: betaZodOutputFormat(schema),
         system: [{ type: "text", text: prompt.system, cache_control: { type: "ephemeral", ttl: CACHE_TTL } }],
         messages: [

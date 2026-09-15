@@ -16,6 +16,7 @@ import type {
   Clarification,
   ContextResolutionOutput,
   KnownFact,
+  QualityLevel,
   Requirement,
   RepositoryContext,
   RepositoryProfile,
@@ -67,6 +68,7 @@ export interface AIProvider {
     profile: RepositoryProfile,
     context: RepositoryContext,
     answeredClarifications: Clarification[],
+    qualityLevel: QualityLevel,
     usage: UsageContext,
   ): Promise<ContextResolutionOutput>;
 
@@ -85,6 +87,7 @@ export interface AIProvider {
     profile: RepositoryProfile,
     context: RepositoryContext,
     knowledge: ResolvedRequirementKnowledge,
+    qualityLevel: QualityLevel,
     usage: UsageContext,
   ): Promise<RequirementAssessment>;
 }

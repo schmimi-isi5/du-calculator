@@ -58,6 +58,7 @@ requirementRouter.post("/score", asyncHandler(async (req, res) => {
     snapshotId,
     requirementContextId: contextId,
     requirement,
+    qualityLevel: requirementContext.qualityLevel,
     status: "ANALYZING",
     impactAnalysis: null,
     dimensionScores: null,
@@ -80,7 +81,14 @@ requirementRouter.post("/score", asyncHandler(async (req, res) => {
     const availableAssumptionIds = new Set(activeAssumptions(requirementContext.assumptions).map((a) => a.id));
     const usageContext = { snapshotId, requirementContextId: contextId, scoringId: result.id };
 
-    const assessment = await aiProvider.assessRequirement(requirement, snapshot.profile, context, knowledge, usageContext);
+    const assessment = await aiProvider.assessRequirement(
+      requirement,
+      snapshot.profile,
+      context,
+      knowledge,
+      requirementContext.qualityLevel,
+      usageContext,
+    );
     const engineResult = computeDuResult(assessment.dimensions, config.pricePerDU);
 
     // Only assumptions that are actually still active may count - a score

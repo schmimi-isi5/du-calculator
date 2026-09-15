@@ -18,19 +18,6 @@ import type {
   RequirementContext,
 } from "../domain/types.js";
 
-/** Standard dialog size (spec section 11): ask a handful of prioritized questions, never a questionnaire. */
-export const MAX_CLARIFICATIONS_PER_ROUND = 2;
-
-/**
- * Hard ceiling on how many resolution rounds may ever ask a new question.
- * Every round is a full AI call over the whole repository context, so an
- * unbounded back-and-forth trades away the "assessment available quickly"
- * goal - once this many rounds have run, the app finalizes on facts/
- * assumptions gathered so far instead of asking again (see
- * requirementContextService.ts runContextResolution).
- */
-export const MAX_RESOLUTION_ROUNDS = 2;
-
 export interface ResolvedContextParts {
   knownFacts: KnownFact[];
   assumptions: Assumption[];
@@ -48,7 +35,14 @@ export interface ResolvedContextParts {
 export function buildResolvedContextParts(
   output: ContextResolutionOutput,
   existingClarifications: Clarification[] = [],
-  allowNewClarifications = true,
+  /**
+   * How many new questions this round may surface - the caller derives this
+   * from the run's QualityLevel (domain/qualityLevels.ts
+   * maxClarificationsPerRound) and 0 once maxResolutionRounds has been
+   * reached, so no more questions are ever asked regardless of what the AI
+   * flagged (see requirementContextService.ts runContextResolution).
+   */
+  maxNewClarifications = 2,
 ): ResolvedContextParts {
   const knownFacts: KnownFact[] = output.knownFacts.map((fact) => ({ ...fact, id: randomUUID() }));
   const assumptions: Assumption[] = output.assumptions.map((assumption) => ({
@@ -73,21 +67,15 @@ export function buildResolvedContextParts(
   // the AI's own emission order stable (Array.sort is stable in Node/V8).
   const prioritized = [...candidates].sort((a, b) => b.potentialScoreImpact - a.potentialScoreImpact);
 
-  // Once MAX_RESOLUTION_ROUNDS is reached, the caller passes false here: no
-  // new question is ever asked again, regardless of what the AI flagged -
-  // the assessment finalizes on the best available facts/assumptions
-  // instead of extending the dialog further.
-  const newClarifications: Clarification[] = allowNewClarifications
-    ? prioritized.slice(0, MAX_CLARIFICATIONS_PER_ROUND).map((info, index) => ({
-        id: randomUUID(),
-        missingInformationId: info.id,
-        question: info.question,
-        priority: index + 1,
-        status: "PENDING" as const,
-        answer: null,
-        answeredAt: null,
-      }))
-    : [];
+  const newClarifications: Clarification[] = prioritized.slice(0, maxNewClarifications).map((info, index) => ({
+    id: randomUUID(),
+    missingInformationId: info.id,
+    question: info.question,
+    priority: index + 1,
+    status: "PENDING" as const,
+    answer: null,
+    answeredAt: null,
+  }));
 
   // Previously answered clarifications remain part of the record (audit
   // trail); only PENDING ones are ever replaced by a fresh round.

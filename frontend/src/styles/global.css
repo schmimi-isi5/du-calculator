@@ -134,6 +134,54 @@ textarea {
   }
 }
 
+.quality-level-picker {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 4px;
+}
+
+@media (max-width: 560px) {
+  .quality-level-picker {
+    grid-template-columns: 1fr;
+  }
+}
+
+.quality-level-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  text-align: left;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+}
+
+.quality-level-option.active {
+  border-color: var(--teal);
+  background: var(--teal-tint);
+}
+
+.quality-level-option:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.quality-level-option-label {
+  font-weight: 800;
+  font-size: 13px;
+}
+
+.quality-level-option-description {
+  font-size: 11px;
+  color: var(--muted);
+}
+
 .btn {
   border: 0;
   border-radius: 9px;
