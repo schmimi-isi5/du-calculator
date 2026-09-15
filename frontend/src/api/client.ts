@@ -1,4 +1,10 @@
-import type { Requirement, RepositorySnapshot, ScoringHistoryEntry, ScoringResult } from "../types";
+import type {
+  Requirement,
+  RepositorySnapshot,
+  RepositorySnapshotSummary,
+  ScoringHistoryEntry,
+  ScoringResult,
+} from "../types";
 
 export class ApiError extends Error {}
 
@@ -47,6 +53,14 @@ async function getJson<T>(path: string): Promise<T> {
 
 export function analyzeRepository(repositoryUrl: string, branch: string): Promise<RepositorySnapshot> {
   return postJson<RepositorySnapshot>("/api/repository/analyze", { repositoryUrl, branch });
+}
+
+export function listRepositorySnapshots(): Promise<RepositorySnapshotSummary[]> {
+  return getJson<RepositorySnapshotSummary[]>("/api/repository");
+}
+
+export function getRepositorySnapshot(id: string): Promise<RepositorySnapshot> {
+  return getJson<RepositorySnapshot>(`/api/repository/${encodeURIComponent(id)}`);
 }
 
 export function scoreRequirement(snapshotId: string, requirement: Requirement): Promise<ScoringResult> {

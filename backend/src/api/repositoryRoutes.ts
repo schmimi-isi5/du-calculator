@@ -6,11 +6,13 @@ import { getAIProvider } from "../ai/getAIProvider.js";
 import { cleanupWorkingDir, cloneAndReadRepository, GitOperationError } from "../git/GitRepositoryService.js";
 import { InvalidRepositoryInputError, validateRepositoryInput } from "../git/validateRepositoryInput.js";
 import { logger } from "../logging.js";
-import { repositoryContextCache } from "../store/RepositoryContextCache.js";
 import { store } from "../store/PostgresScoringStore.js";
 import { asyncHandler } from "./asyncHandler.js";
 
 export const repositoryRouter = Router();
+
+const DEFAULT_SNAPSHOT_LIMIT = 50;
+const MAX_SNAPSHOT_LIMIT = 200;
 
 repositoryRouter.post("/analyze", asyncHandler(async (req, res) => {
   let repositoryUrl: string;
@@ -49,7 +51,6 @@ repositoryRouter.post("/analyze", asyncHandler(async (req, res) => {
     await store.saveSnapshot(snapshot);
 
     const context = await buildRepositoryContext(workingDir, fileTree);
-    repositoryContextCache.save(snapshot.id, context);
 
     const aiProvider = getAIProvider();
     const profile = await aiProvider.analyzeRepository(
@@ -62,6 +63,10 @@ repositoryRouter.post("/analyze", asyncHandler(async (req, res) => {
     snapshot.status = "SNAPSHOT_CREATED";
     snapshot.analyzedAt = new Date().toISOString();
     await store.saveSnapshot(snapshot);
+    // Persisted (not cached in memory) so this repository can be reused for
+    // further requirements later - even after a restart - without
+    // re-cloning or re-running the AI analysis.
+    await store.saveRepositoryContext(snapshot.id, context);
 
     res.status(200).json(snapshot);
   } catch (err) {
@@ -82,6 +87,18 @@ repositoryRouter.post("/analyze", asyncHandler(async (req, res) => {
       });
     }
   }
+}));
+
+// Successfully analyzed repositories, for the "reuse an existing repository"
+// picker. Registered before "/:id" - otherwise Express would match this
+// path as an :id.
+repositoryRouter.get("/", asyncHandler(async (req, res) => {
+  const rawLimit = Number.parseInt(String(req.query.limit ?? ""), 10);
+  const limit =
+    Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, MAX_SNAPSHOT_LIMIT) : DEFAULT_SNAPSHOT_LIMIT;
+
+  const snapshots = await store.listSnapshots(limit);
+  res.status(200).json(snapshots);
 }));
 
 repositoryRouter.get("/:id", asyncHandler(async (req, res) => {

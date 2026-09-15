@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { analyzeRepository, ApiError, getScoringResult, scoreRequirement } from "./api/client";
+import { analyzeRepository, ApiError, getRepositorySnapshot, getScoringResult, scoreRequirement } from "./api/client";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { RepositoryPanel } from "./components/RepositoryPanel";
+import { RepositoryPicker } from "./components/RepositoryPicker";
 import { RequirementPanel } from "./components/RequirementPanel";
 import { ResultHero } from "./components/ResultHero";
 import { ScoringPanel } from "./components/ScoringPanel";
@@ -25,6 +26,7 @@ export default function App() {
   const [snapshot, setSnapshot] = useState<RepositorySnapshot | null>(null);
   const [repoLoading, setRepoLoading] = useState(false);
   const [repoRequestError, setRepoRequestError] = useState<string | null>(null);
+  const [repoPickerRefreshToken, setRepoPickerRefreshToken] = useState(0);
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -47,6 +49,25 @@ export default function App() {
     try {
       const result = await analyzeRepository(repositoryUrl, branch);
       setSnapshot(result);
+      if (result.status === "SNAPSHOT_CREATED") {
+        setRepoPickerRefreshToken((token) => token + 1);
+      }
+    } catch (err) {
+      setRepoRequestError(err instanceof ApiError ? err.message : "Unerwarteter Fehler.");
+    } finally {
+      setRepoLoading(false);
+    }
+  }
+
+  async function handleUseExistingRepository(id: string) {
+    setRepoLoading(true);
+    setRepoRequestError(null);
+    setScoringResult(null);
+    try {
+      const result = await getRepositorySnapshot(id);
+      setSnapshot(result);
+      setRepositoryUrl(result.repositoryUrl);
+      setBranch(result.branch);
     } catch (err) {
       setRepoRequestError(err instanceof ApiError ? err.message : "Unerwarteter Fehler.");
     } finally {
@@ -137,6 +158,12 @@ export default function App() {
         {activeTab === "new" && (
           <div className="grid">
             <section>
+              <RepositoryPicker
+                activeSnapshotId={snapshot?.id ?? null}
+                onUse={handleUseExistingRepository}
+                refreshToken={repoPickerRefreshToken}
+              />
+
               <RepositoryPanel
                 repositoryUrl={repositoryUrl}
                 branch={branch}
