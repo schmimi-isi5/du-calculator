@@ -20,7 +20,14 @@ import { ResultHero } from "./components/ResultHero";
 import { ScoringPanel } from "./components/ScoringPanel";
 import type { WizardStep } from "./components/WizardSteps";
 import { WizardSteps } from "./components/WizardSteps";
-import type { AssumptionAction, RepositorySnapshot, RequirementContext, ScoringResult, UiLanguage } from "./types";
+import type {
+  AssumptionAction,
+  QualityLevel,
+  RepositorySnapshot,
+  RequirementContext,
+  ScoringResult,
+  UiLanguage,
+} from "./types";
 
 function linesToList(value: string): string[] {
   return value
@@ -48,6 +55,7 @@ export default function App() {
   const [description, setDescription] = useState("");
   const [acceptanceCriteria, setAcceptanceCriteria] = useState("");
   const [constraints, setConstraints] = useState("");
+  const [qualityLevel, setQualityLevel] = useState<QualityLevel>("standard");
 
   const [requirementContext, setRequirementContext] = useState<RequirementContext | null>(null);
   const [contextLoading, setContextLoading] = useState(false);
@@ -116,12 +124,16 @@ export default function App() {
     setRequirementContext(null);
     setScoringResult(null);
     try {
-      const context = await resolveRequirementContext(snapshot.id, {
-        title: title.trim(),
-        description: description.trim(),
-        acceptanceCriteria: linesToList(acceptanceCriteria),
-        constraints: linesToList(constraints),
-      });
+      const context = await resolveRequirementContext(
+        snapshot.id,
+        {
+          title: title.trim(),
+          description: description.trim(),
+          acceptanceCriteria: linesToList(acceptanceCriteria),
+          constraints: linesToList(constraints),
+        },
+        qualityLevel,
+      );
       setRequirementContext(context);
     } catch (err) {
       setContextRequestError(err instanceof ApiError ? err.message : "Unerwarteter Fehler.");
@@ -177,6 +189,7 @@ export default function App() {
         snapshotId: requirementContext.snapshotId,
         requirementContextId: requirementContext.id,
         requirement: requirementContext.requirement,
+        qualityLevel: requirementContext.qualityLevel,
         status: "ERROR",
         impactAnalysis: null,
         dimensionScores: null,
@@ -281,12 +294,14 @@ export default function App() {
                   description={description}
                   acceptanceCriteria={acceptanceCriteria}
                   constraints={constraints}
+                  qualityLevel={qualityLevel}
                   canSubmit={canSubmitRequirement}
                   loading={contextLoading && !requirementContext}
                   onChangeTitle={setTitle}
                   onChangeDescription={setDescription}
                   onChangeAcceptanceCriteria={setAcceptanceCriteria}
                   onChangeConstraints={setConstraints}
+                  onChangeQualityLevel={setQualityLevel}
                   onSubmit={handleResolveContext}
                 />
 

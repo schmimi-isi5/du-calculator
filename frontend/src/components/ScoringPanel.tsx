@@ -1,4 +1,4 @@
-import { DIMENSION_ORDER } from "../types";
+import { DIMENSION_ORDER, QUALITY_LEVEL_META } from "../types";
 import type { ScoringResult, UiLanguage } from "../types";
 import { SCORING_STATUS_META } from "../statusMeta";
 
@@ -26,6 +26,7 @@ export function ScoringPanel({ loading, result, language, onChangeLanguage }: Pr
         </div>
       </div>
       <span className={`status-pill ${statusMeta.variant}`}>{statusMeta.label}</span>
+      {result && <span className="tag" style={{ marginLeft: 8 }}>{QUALITY_LEVEL_META[result.qualityLevel].label}</span>}
 
       {!result && !loading && (
         <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 10 }}>

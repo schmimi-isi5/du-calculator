@@ -3,6 +3,7 @@ import type {
   AIUsageLogEntry,
   AIUsageSummary,
   AssumptionAction,
+  QualityLevel,
   Requirement,
   RepositorySnapshot,
   RepositorySnapshotSummary,
@@ -79,8 +80,9 @@ export function getRepositorySnapshot(id: string): Promise<RepositorySnapshot> {
 export function resolveRequirementContext(
   snapshotId: string,
   requirement: Requirement,
+  qualityLevel: QualityLevel,
 ): Promise<RequirementContext> {
-  return postJson<RequirementContext>("/api/requirement-context", { snapshotId, requirement });
+  return postJson<RequirementContext>("/api/requirement-context", { snapshotId, requirement, qualityLevel });
 }
 
 export function getRequirementContext(id: string): Promise<RequirementContext> {

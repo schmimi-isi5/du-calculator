@@ -1,7 +1,8 @@
 import type { Response } from "express";
 import { Router } from "express";
 import { AIProviderError } from "../ai/AIProvider.js";
-import type { Requirement, RequirementContext } from "../domain/types.js";
+import { DEFAULT_QUALITY_LEVEL, isQualityLevel } from "../domain/qualityLevels.js";
+import type { QualityLevel, Requirement, RequirementContext } from "../domain/types.js";
 import { logger } from "../logging.js";
 import {
   applyAssumptionAction,
@@ -27,9 +28,10 @@ async function resolveAndRespond(
   snapshotId: string,
   requirement: Requirement,
   existing: RequirementContext | null,
+  qualityLevel: QualityLevel = DEFAULT_QUALITY_LEVEL,
 ) {
   try {
-    const context = await runContextResolution(snapshotId, requirement, existing);
+    const context = await runContextResolution(snapshotId, requirement, existing, qualityLevel);
     res.status(200).json(context);
   } catch (err) {
     if (err instanceof RequirementContextError) {
@@ -46,6 +48,7 @@ async function resolveAndRespond(
         id: existing?.id ?? store.createRequirementContextId(),
         snapshotId,
         requirement,
+        qualityLevel: existing?.qualityLevel ?? qualityLevel,
         normalization: existing?.normalization ?? null,
         knownFacts: existing?.knownFacts ?? [],
         assumptions: existing?.assumptions ?? [],
@@ -66,7 +69,7 @@ async function resolveAndRespond(
 requirementContextRouter.post(
   "/",
   asyncHandler(async (req, res) => {
-    const { snapshotId, requirement: requirementInput } = req.body ?? {};
+    const { snapshotId, requirement: requirementInput, qualityLevel: qualityLevelInput } = req.body ?? {};
 
     if (typeof snapshotId !== "string" || snapshotId.length === 0) {
       res.status(400).json({ error: "snapshotId is required." });
@@ -81,7 +84,16 @@ requirementContextRouter.post(
       return;
     }
 
-    await resolveAndRespond(res, snapshotId, requirement, null);
+    let qualityLevel: QualityLevel = DEFAULT_QUALITY_LEVEL;
+    if (qualityLevelInput !== undefined) {
+      if (!isQualityLevel(qualityLevelInput)) {
+        res.status(400).json({ error: "qualityLevel must be one of: quick, standard, thorough." });
+        return;
+      }
+      qualityLevel = qualityLevelInput;
+    }
+
+    await resolveAndRespond(res, snapshotId, requirement, null, qualityLevel);
   }),
 );
 

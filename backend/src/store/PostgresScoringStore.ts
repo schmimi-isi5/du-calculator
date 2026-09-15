@@ -49,6 +49,7 @@ interface ScoringResultRow extends QueryResultRow {
   snapshot_id: string;
   requirement_context_id: string | null;
   requirement: ScoringResult["requirement"];
+  quality_level: string;
   status: string;
   impact_analysis: ScoringResult["impactAnalysis"];
   dimension_scores: ScoringResult["dimensionScores"];
@@ -65,6 +66,7 @@ interface RequirementContextRow extends QueryResultRow {
   id: string;
   snapshot_id: string;
   requirement: RequirementContext["requirement"];
+  quality_level: string;
   normalization: RequirementContext["normalization"];
   known_facts: RequirementContext["knownFacts"] | null;
   assumptions: RequirementContext["assumptions"] | null;
@@ -125,6 +127,7 @@ function toScoringResult(row: ScoringResultRow): ScoringResult {
     snapshotId: row.snapshot_id,
     requirementContextId: row.requirement_context_id,
     requirement: row.requirement,
+    qualityLevel: row.quality_level as ScoringResult["qualityLevel"],
     status: row.status as ScoringResult["status"],
     impactAnalysis: row.impact_analysis ?? null,
     dimensionScores: row.dimension_scores ?? null,
@@ -143,6 +146,7 @@ function toRequirementContext(row: RequirementContextRow): RequirementContext {
     id: row.id,
     snapshotId: row.snapshot_id,
     requirement: row.requirement,
+    qualityLevel: row.quality_level as RequirementContext["qualityLevel"],
     normalization: row.normalization ?? null,
     knownFacts: row.known_facts ?? [],
     assumptions: row.assumptions ?? [],
@@ -260,9 +264,9 @@ export class PostgresScoringStore implements ScoringStore {
   async saveRequirementContext(context: RequirementContext): Promise<void> {
     await pool.query(
       `INSERT INTO requirement_contexts
-         (id, snapshot_id, requirement, normalization, known_facts, assumptions, missing_information,
-          clarifications, status, resolution_rounds, error_message, created_at, updated_at)
-       VALUES ($1, $2, $3::jsonb, $4::jsonb, $5::jsonb, $6::jsonb, $7::jsonb, $8::jsonb, $9, $10, $11, $12, $13)
+         (id, snapshot_id, requirement, quality_level, normalization, known_facts, assumptions,
+          missing_information, clarifications, status, resolution_rounds, error_message, created_at, updated_at)
+       VALUES ($1, $2, $3::jsonb, $4, $5::jsonb, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb, $10, $11, $12, $13, $14)
        ON CONFLICT (id) DO UPDATE SET
          normalization = EXCLUDED.normalization,
          known_facts = EXCLUDED.known_facts,
@@ -277,6 +281,7 @@ export class PostgresScoringStore implements ScoringStore {
         context.id,
         context.snapshotId,
         JSON.stringify(context.requirement),
+        context.qualityLevel,
         context.normalization !== null ? JSON.stringify(context.normalization) : null,
         JSON.stringify(context.knownFacts),
         JSON.stringify(context.assumptions),
@@ -293,8 +298,8 @@ export class PostgresScoringStore implements ScoringStore {
 
   async getRequirementContext(id: string): Promise<RequirementContext | undefined> {
     const result = await pool.query<RequirementContextRow>(
-      `SELECT id, snapshot_id, requirement, normalization, known_facts, assumptions, missing_information,
-              clarifications, status, resolution_rounds, error_message, created_at, updated_at
+      `SELECT id, snapshot_id, requirement, quality_level, normalization, known_facts, assumptions,
+              missing_information, clarifications, status, resolution_rounds, error_message, created_at, updated_at
        FROM requirement_contexts WHERE id = $1`,
       [id],
     );
@@ -304,10 +309,11 @@ export class PostgresScoringStore implements ScoringStore {
   async saveScoringResult(result: ScoringResult): Promise<void> {
     await pool.query(
       `INSERT INTO scoring_results
-         (id, snapshot_id, requirement_context_id, requirement, status, impact_analysis, dimension_scores,
-          overall_assessment, confidence, du_result, assumptions_used, open_questions, error_message, scored_at)
-       VALUES ($1, $2, $3, $4::jsonb, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb, $10::jsonb, $11::jsonb,
-               $12::jsonb, $13, $14)
+         (id, snapshot_id, requirement_context_id, requirement, quality_level, status, impact_analysis,
+          dimension_scores, overall_assessment, confidence, du_result, assumptions_used, open_questions,
+          error_message, scored_at)
+       VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7::jsonb, $8::jsonb, $9::jsonb, $10::jsonb, $11::jsonb, $12::jsonb,
+               $13::jsonb, $14, $15)
        ON CONFLICT (id) DO UPDATE SET
          status = EXCLUDED.status,
          impact_analysis = EXCLUDED.impact_analysis,
@@ -324,6 +330,7 @@ export class PostgresScoringStore implements ScoringStore {
         result.snapshotId,
         result.requirementContextId,
         JSON.stringify(result.requirement),
+        result.qualityLevel,
         result.status,
         result.impactAnalysis !== null ? JSON.stringify(result.impactAnalysis) : null,
         result.dimensionScores !== null ? JSON.stringify(result.dimensionScores) : null,
@@ -340,8 +347,9 @@ export class PostgresScoringStore implements ScoringStore {
 
   async getScoringResult(id: string): Promise<ScoringResult | undefined> {
     const result = await pool.query<ScoringResultRow>(
-      `SELECT id, snapshot_id, requirement_context_id, requirement, status, impact_analysis, dimension_scores,
-              overall_assessment, confidence, du_result, assumptions_used, open_questions, error_message, scored_at
+      `SELECT id, snapshot_id, requirement_context_id, requirement, quality_level, status, impact_analysis,
+              dimension_scores, overall_assessment, confidence, du_result, assumptions_used, open_questions,
+              error_message, scored_at
        FROM scoring_results WHERE id = $1`,
       [id],
     );

@@ -5,8 +5,9 @@
 // "run resolution, then persist" only happens in one place.
 
 import { getAIProvider } from "../ai/getAIProvider.js";
-import type { RepositorySnapshot, Requirement, RequirementContext } from "../domain/types.js";
-import { buildResolvedContextParts, hasPendingClarifications, MAX_RESOLUTION_ROUNDS } from "../scoring/clarificationGate.js";
+import { DEFAULT_QUALITY_LEVEL, QUALITY_PROFILES } from "../domain/qualityLevels.js";
+import type { QualityLevel, RepositorySnapshot, Requirement, RequirementContext } from "../domain/types.js";
+import { buildResolvedContextParts, hasPendingClarifications } from "../scoring/clarificationGate.js";
 import { store } from "../store/PostgresScoringStore.js";
 
 export class RequirementContextError extends Error {}
@@ -17,11 +18,17 @@ export class RequirementContextError extends Error {}
  * clarification gate, and persists the result. Reused for the initial
  * resolution, after a clarification answer, and after an assumption is
  * rejected (all three can surface a fresh or updated set of questions).
+ *
+ * `qualityLevel` only matters on the very first call (existing === null) -
+ * it is fixed on the RequirementContext from then on and every later round
+ * reuses it, so a run never drifts between depths partway through (see
+ * domain/types.ts QualityLevel).
  */
 export async function runContextResolution(
   snapshotId: string,
   requirement: Requirement,
   existing: RequirementContext | null,
+  qualityLevel: QualityLevel = DEFAULT_QUALITY_LEVEL,
 ): Promise<RequirementContext> {
   const snapshot = await store.getSnapshot(snapshotId);
   if (!snapshot || snapshot.status !== "SNAPSHOT_CREATED" || !snapshot.profile) {
@@ -35,6 +42,9 @@ export async function runContextResolution(
     );
   }
 
+  const effectiveQualityLevel = existing?.qualityLevel ?? qualityLevel;
+  const profile = QUALITY_PROFILES[effectiveQualityLevel];
+
   const now = new Date().toISOString();
   const priorClarifications = existing?.clarifications ?? [];
   const answered = priorClarifications.filter((c) => c.status === "ANSWERED");
@@ -43,10 +53,11 @@ export async function runContextResolution(
   // own id, not something derived from the AI's response.
   const contextId = existing?.id ?? store.createRequirementContextId();
   const priorRounds = existing?.resolutionRounds ?? 0;
-  // Past MAX_RESOLUTION_ROUNDS, this round's AI call still runs (it may
-  // resolve everything itself), but no new clarification question is ever
-  // surfaced from it - see clarificationGate.ts buildResolvedContextParts.
-  const allowNewClarifications = priorRounds < MAX_RESOLUTION_ROUNDS;
+  // Past the chosen quality level's maxResolutionRounds, this round's AI
+  // call still runs (it may resolve everything itself), but no new
+  // clarification question is ever surfaced from it - see
+  // clarificationGate.ts buildResolvedContextParts.
+  const maxNewClarifications = priorRounds < profile.maxResolutionRounds ? profile.maxClarificationsPerRound : 0;
 
   const aiProvider = getAIProvider();
   const output = await aiProvider.resolveRequirementContext(
@@ -54,15 +65,17 @@ export async function runContextResolution(
     snapshot.profile as NonNullable<RepositorySnapshot["profile"]>,
     repositoryContext,
     answered,
+    effectiveQualityLevel,
     { snapshotId, requirementContextId: contextId },
   );
 
-  const parts = buildResolvedContextParts(output, priorClarifications, allowNewClarifications);
+  const parts = buildResolvedContextParts(output, priorClarifications, maxNewClarifications);
 
   const context: RequirementContext = {
     id: contextId,
     snapshotId,
     requirement,
+    qualityLevel: effectiveQualityLevel,
     normalization: output.normalization,
     knownFacts: parts.knownFacts,
     assumptions: mergeAssumptionDecisions(parts.assumptions, existing?.assumptions ?? []),

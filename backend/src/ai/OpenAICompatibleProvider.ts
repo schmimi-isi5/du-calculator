@@ -22,6 +22,7 @@ import type {
   AIProviderName,
   Clarification,
   ContextResolutionOutput,
+  QualityLevel,
   Requirement,
   RepositoryContext,
   RepositoryProfile,
@@ -104,9 +105,10 @@ export class OpenAICompatibleProvider implements AIProvider {
     profile: RepositoryProfile,
     context: RepositoryContext,
     answeredClarifications: Clarification[],
+    qualityLevel: QualityLevel,
     usageContext: UsageContext,
   ): Promise<ContextResolutionOutput> {
-    const prompt = buildContextResolutionPrompt(requirement, profile, context, answeredClarifications);
+    const prompt = buildContextResolutionPrompt(requirement, profile, context, answeredClarifications, qualityLevel);
     return this.complete<ContextResolutionOutput>(
       prompt,
       ContextResolutionOutputSchema,
@@ -121,9 +123,10 @@ export class OpenAICompatibleProvider implements AIProvider {
     profile: RepositoryProfile,
     context: RepositoryContext,
     knowledge: ResolvedRequirementKnowledge,
+    qualityLevel: QualityLevel,
     usageContext: UsageContext,
   ): Promise<RequirementAssessment> {
-    const prompt = buildAssessmentPrompt(requirement, profile, context, knowledge);
+    const prompt = buildAssessmentPrompt(requirement, profile, context, knowledge, qualityLevel);
     return this.complete<RequirementAssessment>(
       prompt,
       RequirementAssessmentSchema,
