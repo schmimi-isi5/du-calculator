@@ -27,7 +27,7 @@ export function RequirementPanel({
 }: Props) {
   return (
     <div className="card">
-      <h2>2 · Anforderung</h2>
+      <h2>Anforderung erfassen</h2>
 
       <label htmlFor="reqTitle">Titel</label>
       <input id="reqTitle" value={title} onChange={(e) => onChangeTitle(e.target.value)} />
