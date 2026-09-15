@@ -30,7 +30,7 @@ export function RepositoryPanel({
 
   return (
     <div className="card">
-      <h2>1 · Repository</h2>
+      <h2>Repository analysieren</h2>
       <div className="row">
         <div>
           <label htmlFor="repositoryUrl">Repository URL</label>
@@ -52,15 +52,18 @@ export function RepositoryPanel({
         </div>
       </div>
 
-      <label htmlFor="accessToken">Access Token (optional, für private Repositories)</label>
-      <input
-        id="accessToken"
-        type="password"
-        autoComplete="off"
-        value={accessToken}
-        onChange={(e) => onChangeAccessToken(e.target.value)}
-        placeholder="ghp_… (wird nur für diesen einen Clone-Vorgang verwendet, nie gespeichert)"
-      />
+      <details className="inline-details">
+        <summary>Privates Repository? Access Token hinterlegen</summary>
+        <label htmlFor="accessToken">Access Token</label>
+        <input
+          id="accessToken"
+          type="password"
+          autoComplete="off"
+          value={accessToken}
+          onChange={(e) => onChangeAccessToken(e.target.value)}
+          placeholder="ghp_… (nur für diesen Clone-Vorgang, wird nicht gespeichert)"
+        />
+      </details>
 
       <div className="actions">
         <button className="btn secondary" onClick={onAnalyze} disabled={loading}>
@@ -77,20 +80,19 @@ export function RepositoryPanel({
 
       {snapshot?.status === "SNAPSHOT_CREATED" && (
         <div className="repo-result">
-          <dl>
-            <dt>Commit SHA</dt>
-            <dd>
-              <code className="file-path">{snapshot.commitSha}</code>
-            </dd>
-            <dt>Analysiert am</dt>
-            <dd>{snapshot.analyzedAt ? new Date(snapshot.analyzedAt).toLocaleString("de-DE") : "–"}</dd>
-            <dt>Berücksichtigte Dateien</dt>
-            <dd>{snapshot.fileTree.length}</dd>
-          </dl>
+          <div className="repo-result-meta">
+            <code className="file-path">{snapshot.commitSha?.slice(0, 10)}</code>
+            <span>·</span>
+            <span>{snapshot.analyzedAt ? new Date(snapshot.analyzedAt).toLocaleString("de-DE") : "–"}</span>
+            <span>·</span>
+            <span>{snapshot.fileTree.length} Dateien berücksichtigt</span>
+          </div>
+
+          {snapshot.profile && <p className="repo-result-summary">{snapshot.profile.summary}</p>}
 
           {snapshot.profile && (
-            <>
-              <p style={{ margin: "0 0 10px" }}>{snapshot.profile.summary}</p>
+            <details className="inline-details">
+              <summary>Technisches Profil im Detail</summary>
 
               <TagSection label="Sprachen" items={snapshot.profile.languages} />
               <TagSection label="Frameworks" items={snapshot.profile.frameworks} />
@@ -117,7 +119,7 @@ export function RepositoryPanel({
                   ))}
                 </div>
               )}
-            </>
+            </details>
           )}
         </div>
       )}
