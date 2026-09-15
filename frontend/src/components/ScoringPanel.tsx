@@ -110,13 +110,16 @@ export function ScoringPanel({ loading, result, language, onChangeLanguage }: Pr
                       <code className="file-path">{ev.file}</code> — {ev.reason}
                     </div>
                   ))}
-                  {dim.factsUsed.length > 0 && (
+                  {/* factsUsed/assumptionsUsed/unresolvedRisks are absent on scoring
+                      results persisted before the assumption engine shipped - guard
+                      against that older shape instead of crashing the whole page. */}
+                  {(dim.factsUsed?.length ?? 0) > 0 && (
                     <div className="dim-trace">Fakten: {dim.factsUsed.join("; ")}</div>
                   )}
-                  {dim.assumptionsUsed.length > 0 && (
+                  {(dim.assumptionsUsed?.length ?? 0) > 0 && (
                     <div className="dim-trace">Annahmen verwendet: {dim.assumptionsUsed.length}</div>
                   )}
-                  {dim.unresolvedRisks.length > 0 && (
+                  {(dim.unresolvedRisks?.length ?? 0) > 0 && (
                     <div className="dim-missing">Ungelöste Risiken: {dim.unresolvedRisks.join("; ")}</div>
                   )}
                   {dim.missingInformation.length > 0 && (
