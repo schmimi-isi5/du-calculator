@@ -27,6 +27,22 @@ Before letting an existing component reduce a score, decide which of these appli
 Only A and B may lower a score. C must NOT reduce a score - Development Units represent the scope, complexity, and risk of the delivered result, not developer effort or time saved.
 `.trim();
 
+/**
+ * Every prompt builder splits its content this way instead of a single
+ * string: `stableContext` is byte-identical across repeated calls for the
+ * same repository/requirement (the repository profile and file excerpts,
+ * which can run to tens of thousands of tokens) and `volatile` is whatever
+ * legitimately differs call to call (the requirement text, answered
+ * clarifications, prior AI outputs). Providers that support explicit prompt
+ * caching (see AnthropicProvider) put a cache breakpoint between the two;
+ * providers that don't just concatenate them.
+ */
+export interface PromptParts {
+  system: string;
+  stableContext: string;
+  volatile: string;
+}
+
 function formatRepositoryContext(context: RepositoryContext): string {
   const fileList = context.fileTree.map((f) => `- ${f}`).join("\n");
   const excerpts = Object.entries(context.fileExcerpts)
@@ -73,22 +89,22 @@ function formatKnowledge(knowledge: ResolvedRequirementKnowledge): string {
 export function buildRepositoryAnalysisPrompt(
   repository: RepositoryIdentity,
   context: RepositoryContext,
-): { system: string; user: string } {
+): PromptParts {
   const system = `You are a senior software architect analyzing a real, existing code repository for the ISIFIVE DU Calculator. Your job is to build an accurate, evidence-based technical profile of this repository - languages, frameworks, services, data models, integrations, AI components, tests, and deployment setup.
 
 ${EVIDENCE_RULES}
 
 Be factual and conservative. This profile will be used as the basis for estimating future development work, so overstating capabilities that don't exist, or missing ones that do, has real business consequences.`;
 
-  const user = `Repository: ${repository.repositoryUrl}
+  const stableContext = `Repository: ${repository.repositoryUrl}
 Branch: ${repository.branch}
 Commit: ${repository.commitSha}
 
-${formatRepositoryContext(context)}
+${formatRepositoryContext(context)}`;
 
-Produce a technical profile of this repository based only on the content above.`;
+  const volatile = `Produce a technical profile of this repository based only on the content above.`;
 
-  return { system, user };
+  return { system, stableContext, volatile };
 }
 
 // ---------------------------------------------------------------------------
@@ -175,7 +191,7 @@ export function buildContextResolutionPrompt(
   profile: RepositoryProfile,
   context: RepositoryContext,
   answeredClarifications: Clarification[],
-): { system: string; user: string } {
+): PromptParts {
   const system = `You are running the "Assumption & Clarification" stage of the ISIFIVE DU Calculator, before any impact analysis or scoring happens. Your job is NOT to ask the user everything you don't know - it is to resolve as much as possible yourself, and flag only what truly needs a human decision.
 
 Core principle: a missing piece of information is not automatically a question. Only information whose uncertainty would materially change scope, architecture, risk, acceptance, or the DU result should ever become a clarification question - and only after every other source has failed to resolve it.
@@ -196,7 +212,19 @@ ${QUESTION_QUALITY_RULE}
 
 ${EVIDENCE_RULES}
 
-Produce: a normalization of the requirement (extraction only, no invented facts), the known facts you established, the assumptions you propose, and every information gap you detected with its classification and reasoning - including the ones you resolved yourself (FACT/DERIVED/ASSUMPTION/UNKNOWN_NON_BLOCKING) as well as any genuine CLARIFICATION_REQUIRED items. The application - not you - decides how many of the CLARIFICATION_REQUIRED items actually get asked; list all of them with accurate potentialScoreImpact so it can prioritize correctly.`;
+Produce: a normalization of the requirement (extraction only, no invented facts), the known facts you established, the assumptions you propose, and every information gap you detected with its classification and reasoning - including the ones you resolved yourself (FACT/DERIVED/ASSUMPTION/UNKNOWN_NON_BLOCKING) as well as any genuine CLARIFICATION_REQUIRED items. The application - not you - decides how many of the CLARIFICATION_REQUIRED items actually get asked; list all of them with accurate potentialScoreImpact so it can prioritize correctly.
+
+The repository profile and file contents are provided first, below, as reference material - the actual requirement to resolve follows after it.`;
+
+  // This resolution round runs again after every answered clarification, so
+  // the repository profile/context (often tens of thousands of tokens) is
+  // resent byte-for-byte across rounds - the cache-friendly part. Everything
+  // that changes round to round (the answered-clarifications list grows)
+  // must stay in `volatile`, after the cache breakpoint.
+  const stableContext = `REPOSITORY PROFILE (already analyzed):
+${JSON.stringify(profile, null, 2)}
+
+${formatRepositoryContext(context)}`;
 
   const answeredBlock = answeredClarifications.length
     ? `\n\nPREVIOUSLY ANSWERED CLARIFICATIONS (treat as FACT - source hierarchy step 3):\n${answeredClarifications
@@ -204,7 +232,7 @@ Produce: a normalization of the requirement (extraction only, no invented facts)
         .join("\n\n")}`
     : "";
 
-  const user = `REQUIREMENT
+  const volatile = `REQUIREMENT
 Title: ${requirement.title}
 
 Description:
@@ -217,14 +245,9 @@ Constraints:
 ${requirement.constraints.map((c) => `- ${c}`).join("\n") || "(none provided)"}
 ${answeredBlock}
 
-REPOSITORY PROFILE (already analyzed):
-${JSON.stringify(profile, null, 2)}
-
-${formatRepositoryContext(context)}
-
 Resolve this requirement's context now.`;
 
-  return { system, user };
+  return { system, stableContext, volatile };
 }
 
 export function buildImpactAnalysisPrompt(
@@ -232,16 +255,26 @@ export function buildImpactAnalysisPrompt(
   profile: RepositoryProfile,
   context: RepositoryContext,
   knowledge: ResolvedRequirementKnowledge,
-): { system: string; user: string } {
+): PromptParts {
   const system = `You are a senior software architect performing a Requirement Impact Analysis for the ISIFIVE DU Calculator. You compare a new customer requirement against a repository you have already profiled, and determine what already exists, what can be reused, what must be modified, and what must be newly created.
 
 ${EVIDENCE_RULES}
 
 ${REUSE_RULE}
 
-Known facts and documented assumptions for this requirement are provided below - build on them rather than re-deriving them, and do not raise questions about things they already resolve. List concrete risks and open questions only where the requirement is still ambiguous or the repository context does not resolve how it should be implemented.`;
+Known facts and documented assumptions for this requirement are provided below - build on them rather than re-deriving them, and do not raise questions about things they already resolve. List concrete risks and open questions only where the requirement is still ambiguous or the repository context does not resolve how it should be implemented.
 
-  const user = `REQUIREMENT
+The repository profile and file contents are provided first, below, as reference material - the requirement and what's already known about it follow after it.`;
+
+  // Stable across a re-score of the same requirement against the same
+  // snapshot (see scoring/clarificationGate.ts - a user can confirm/reject
+  // an assumption and re-score without re-cloning or re-profiling).
+  const stableContext = `REPOSITORY PROFILE (already analyzed):
+${JSON.stringify(profile, null, 2)}
+
+${formatRepositoryContext(context)}`;
+
+  const volatile = `REQUIREMENT
 Title: ${requirement.title}
 
 Description:
@@ -255,14 +288,9 @@ ${requirement.constraints.map((c) => `- ${c}`).join("\n") || "(none provided)"}
 
 ${formatKnowledge(knowledge)}
 
-REPOSITORY PROFILE (already analyzed):
-${JSON.stringify(profile, null, 2)}
-
-${formatRepositoryContext(context)}
-
 Analyze the impact of this requirement against the actual repository above.`;
 
-  return { system, user };
+  return { system, stableContext, volatile };
 }
 
 const DIMENSION_DESCRIPTIONS = `
@@ -297,7 +325,7 @@ export function buildScoringPrompt(
   impact: ImpactAnalysis,
   context: RepositoryContext,
   knowledge: ResolvedRequirementKnowledge,
-): { system: string; user: string } {
+): PromptParts {
   const system = `You are scoring a customer requirement across eight fixed dimensions for the ISIFIVE DU Calculator. You NEVER decide a final Development Unit count or price - that is computed deterministically by the application from your per-dimension scores. Your only job is to score each dimension 1 (very low) to 5 (very high), with a summary, a detailed rationale, evidence, a confidence (0.0-1.0), and any missing information that limits your confidence - plus one overall assessment synthesizing all eight dimensions.
 
 ${DIMENSION_DESCRIPTIONS}
@@ -310,9 +338,16 @@ ${BILINGUAL_RULE}
 
 ${ASSUMPTION_AWARE_SCORING_RULE}
 
-If you lack information to score a dimension confidently, say so explicitly in missingInformation and lower that dimension's confidence accordingly - do not compensate by guessing a score you cannot support.`;
+If you lack information to score a dimension confidently, say so explicitly in missingInformation and lower that dimension's confidence accordingly - do not compensate by guessing a score you cannot support.
 
-  const user = `REQUIREMENT
+The repository profile and file contents are provided first, below, as reference material - the requirement, what's known about it, and the impact analysis to score follow after it.`;
+
+  const stableContext = `REPOSITORY PROFILE:
+${JSON.stringify(profile, null, 2)}
+
+${formatRepositoryContext(context)}`;
+
+  const volatile = `REQUIREMENT
 Title: ${requirement.title}
 
 Description:
@@ -326,15 +361,10 @@ ${requirement.constraints.map((c) => `- ${c}`).join("\n") || "(none provided)"}
 
 ${formatKnowledge(knowledge)}
 
-REPOSITORY PROFILE:
-${JSON.stringify(profile, null, 2)}
-
 IMPACT ANALYSIS:
 ${JSON.stringify(impact, null, 2)}
 
-${formatRepositoryContext(context)}
-
 Score all eight dimensions now.`;
 
-  return { system, user };
+  return { system, stableContext, volatile };
 }

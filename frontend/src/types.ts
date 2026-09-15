@@ -253,3 +253,36 @@ export interface ScoringHistoryEntry {
   scoredAt: string | null;
   createdAt: string;
 }
+
+// ---------------------------------------------------------------------------
+// AI usage & cost dashboard
+// ---------------------------------------------------------------------------
+
+export type AIProviderName = "anthropic" | "openai" | "openrouter" | "local";
+
+export interface AIUsageBreakdownEntry {
+  key: string;
+  requestCount: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationInputTokens: number;
+  cacheReadInputTokens: number;
+  costUsd: number | null;
+}
+
+export interface AIUsageSummary {
+  requestCount: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationInputTokens: number;
+  cacheReadInputTokens: number;
+  costUsd: number | null;
+  unknownCostRequestCount: number;
+  byModel: AIUsageBreakdownEntry[];
+  byOperation: AIUsageBreakdownEntry[];
+}
+
+export interface AIUsageConfig {
+  provider: AIProviderName;
+  model: string;
+}

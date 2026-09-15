@@ -1,5 +1,6 @@
 import cors from "cors";
 import express from "express";
+import { aiUsageRouter } from "./api/aiUsageRoutes.js";
 import { requirementContextRouter } from "./api/requirementContextRoutes.js";
 import { requirementRouter } from "./api/requirementRoutes.js";
 import { repositoryRouter } from "./api/repositoryRoutes.js";
@@ -29,6 +30,7 @@ async function main(): Promise<void> {
   app.use("/api/repository", repositoryRouter);
   app.use("/api/requirement-context", requirementContextRouter);
   app.use("/api/requirement", requirementRouter);
+  app.use("/api/ai-usage", aiUsageRouter);
 
   // Centralized error handler: never leak internal stack traces to the
   // client, but always log server-side so failures are diagnosable.

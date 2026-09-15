@@ -10,7 +10,7 @@
 - **Backend**: Node.js 22, TypeScript, Express, `simple-git` (real git clone/read), `@anthropic-ai/sdk` + Zod (structured AI output), `pg` (Postgres, no ORM)
 - **Frontend**: React 18 + Vite, plain CSS (ISIFIVE branding: `#61a60e` / `#007481`)
 - **Database**: PostgreSQL 16 (repository snapshots + scoring history; raw file excerpts used during scoring stay in-memory only, never persisted)
-- **AI Provider**: Anthropic Claude (`claude-opus-5`) via a swappable `AIProvider` interface - a future `KonturosProvider` can replace it without touching git access, DU mapping, or pricing
+- **AI Provider**: swappable via the `AIProvider` interface (`backend/src/ai/getAIProvider.ts`), selected by `AI_PROVIDER`: `anthropic` (default, `AnthropicProvider`, `claude-opus-5` unless `AI_MODEL` overrides it) or `openai` / `openrouter` / `local` (all `OpenAICompatibleProvider`, distinguished by `AI_BASE_URL` + `AI_MODEL`) - a future `KonturosProvider` can be added the same way without touching git access, DU mapping, or pricing. Every call is logged with tokens and estimated cost (`backend/src/ai/pricing.ts`, `store/AIUsageStore.ts`), viewable in the frontend's "KI-Kosten" tab
 - **Infrastructure**: Docker Compose (Postgres + backend + nginx-served frontend), deployable as-is on Coolify
 
 ## Project Structure
@@ -18,25 +18,25 @@
 ```
 backend/
   src/
-    ai/         AIProvider interface, AnthropicProvider, prompts (incl. context resolution)
-    api/        Express routes (repository, requirement-context, requirement/scoring, history)
+    ai/         AIProvider interface, AnthropicProvider, OpenAICompatibleProvider, prompts (incl. context resolution), pricing, usageTracker
+    api/        Express routes (repository, requirement-context, requirement/scoring, history, ai-usage)
     context/    Repository file filtering + budgeted context building
     db/         Postgres connection pool + schema/migration
     domain/     Shared types and Zod schemas
     git/        GitRepositoryService (real clone/read), input validation
     scoring/    Deterministic DU Engine + clarificationGate (assumption/clarification orchestration)
-    store/      PostgresScoringStore - snapshots, requirement contexts, and scoring results
+    store/      PostgresScoringStore (snapshots, requirement contexts, scoring results) + AIUsageStore (cost log)
 frontend/
   src/
     api/        Fetch client for the backend
-    components/ RepositoryPanel, RequirementPanel, RequirementContextPanel, ScoringPanel, ResultHero, HistoryPanel
+    components/ RepositoryPanel, RequirementPanel, RequirementContextPanel, ScoringPanel, ResultHero, HistoryPanel, AIUsageDashboard
 docker-compose.yml   Postgres + backend + frontend, Coolify-deployable as-is
 ```
 
 ## Essential Commands
 
 - **Install dependencies**: `cd backend && npm install`, `cd frontend && npm install`
-- **Run locally (backend)**: `cd backend && cp env.example .env` (fill in `ANTHROPIC_API_KEY` and `DATABASE_URL`), then `npm run dev`
+- **Run locally (backend)**: `cd backend && cp env.example .env` (fill in `DATABASE_URL` and the credential for whichever `AI_PROVIDER` you use - `ANTHROPIC_API_KEY` by default), then `npm run dev`
 - **Run locally (frontend)**: `cd frontend && npm run dev`
 - **Run tests**: `cd backend && npm test`
 - **Typecheck**: `npm run typecheck` in either package
@@ -50,5 +50,7 @@ docker-compose.yml   Postgres + backend + frontend, Coolify-deployable as-is
 - Every AI-generated `summary`, `rationale`, and `overallAssessment` is bilingual (`{ en, de }`) - written independently in each language, not machine-translated. See `backend/src/domain/schemas.ts` and the `BILINGUAL_RULE` in `backend/src/ai/prompts.ts`.
 - Repository content and AI evidence must be attributable: every `RepositoryFinding` carries a `VERIFIED | INFERRED | UNKNOWN` status per `backend/src/domain/types.ts`.
 - Domain history (repository snapshots, requirement contexts, scoring results) is persisted in Postgres via `ScoringStore`, including the file excerpts a repository was analyzed with - so an already-analyzed repository can be reused for a new requirement without re-cloning or re-running the AI analysis.
-- Backend fails fast on invalid/missing required configuration (`DATABASE_URL`) at startup; `ANTHROPIC_API_KEY` is the one exception, checked lazily on first AI call, since cloning a repository doesn't need it.
+- Backend fails fast on invalid/missing required configuration (`DATABASE_URL`) at startup; AI provider credentials/model are the one exception, checked lazily by `getAIProvider()` on first AI call, since cloning a repository doesn't need one.
+- Every AI call is priced and logged to `ai_usage_log` regardless of provider (`ai/usageTracker.ts`). A (provider, model) pair with no known price (e.g. an unlisted OpenRouter model, no `AI_CUSTOM_INPUT_PRICE_PER_MTOK`/`AI_CUSTOM_OUTPUT_PRICE_PER_MTOK` set) is logged with `costUsd: null` - shown as "unknown" in the dashboard, never guessed. Cache economics (`ai/pricing.ts`) are provider-specific, not a shared constant - Anthropic's explicit `cache_control` breakpoints (`AnthropicProvider`) carry a write surcharge and a steep read discount; OpenAI's automatic caching has neither.
+- `ai/prompts.ts` builders return `{ system, stableContext, volatile }`, not a single string: `stableContext` (the repository profile + file excerpts, often tens of thousands of tokens) is byte-identical across a clarification round's repeated calls and across a re-score of the same requirement, so `AnthropicProvider` places an explicit 1-hour `cache_control` breakpoint after it.
 - "A missing piece of information is not automatically a question." The AI classifies every information gap (FACT/DERIVED/ASSUMPTION/CLARIFICATION_REQUIRED/UNKNOWN_NON_BLOCKING, see `domain/types.ts`); `scoring/clarificationGate.ts` - pure, deterministic, no LLM calls - decides which of those actually become a question (capped at 3 per round, prioritized by potential DU impact). Assumptions are never presented as facts, always carry a confidence and a basis, and a user can CONFIRM/REJECT/EDIT one at any time (re-score explicitly afterward - editing an assumption does not auto-spend a new AI call).

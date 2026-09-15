@@ -640,6 +640,59 @@ code.file-path {
   text-overflow: ellipsis;
 }
 
+.usage-table-wrap {
+  overflow-x: auto;
+}
+
+.usage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.usage-table th {
+  text-align: left;
+  padding: 8px 10px;
+  color: var(--muted);
+  font-size: 11px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.usage-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #eef1f0;
+  white-space: nowrap;
+}
+
+.usage-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.usage-kpi {
+  background: #f2f6f4;
+  padding: 10px 12px;
+  border-radius: 10px;
+}
+
+.usage-kpi small {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.usage-kpi b {
+  font-size: 18px;
+}
+
+.usage-kpi-note {
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
 .repo-picker {
   margin-bottom: 14px;
 }

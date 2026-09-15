@@ -9,6 +9,7 @@ import {
   resolveRequirementContext,
   scoreRequirement,
 } from "./api/client";
+import { AIUsageDashboard } from "./components/AIUsageDashboard";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { RepositoryPanel } from "./components/RepositoryPanel";
 import { RepositoryPicker } from "./components/RepositoryPicker";
@@ -28,7 +29,7 @@ function linesToList(value: string): string[] {
     .filter((line) => line.length > 0);
 }
 
-type Tab = "new" | "history";
+type Tab = "new" | "history" | "usage";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>("new");
@@ -231,6 +232,9 @@ export default function App() {
           <button className={activeTab === "history" ? "active" : ""} onClick={() => setActiveTab("history")}>
             Historie
           </button>
+          <button className={activeTab === "usage" ? "active" : ""} onClick={() => setActiveTab("usage")}>
+            KI-Kosten
+          </button>
         </div>
 
         {activeTab === "new" && (
@@ -377,6 +381,8 @@ export default function App() {
             <aside>{historySelectedId && <ResultHero result={historyResult} />}</aside>
           </div>
         )}
+
+        {activeTab === "usage" && <AIUsageDashboard />}
       </main>
     </>
   );

@@ -1,4 +1,6 @@
 import type {
+  AIUsageConfig,
+  AIUsageSummary,
   AssumptionAction,
   Requirement,
   RepositorySnapshot,
@@ -116,4 +118,13 @@ export function getScoringHistory(): Promise<ScoringHistoryEntry[]> {
 
 export function getScoringResult(id: string): Promise<ScoringResult> {
   return getJson<ScoringResult>(`/api/requirement/${encodeURIComponent(id)}`);
+}
+
+export function getAIUsageSummary(from: Date, to: Date): Promise<AIUsageSummary> {
+  const params = new URLSearchParams({ from: from.toISOString(), to: to.toISOString() });
+  return getJson<AIUsageSummary>(`/api/ai-usage/summary?${params.toString()}`);
+}
+
+export function getAIUsageConfig(): Promise<AIUsageConfig> {
+  return getJson<AIUsageConfig>("/api/ai-usage/config");
 }

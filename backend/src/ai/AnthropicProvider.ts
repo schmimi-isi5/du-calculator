@@ -27,24 +27,36 @@ import {
   buildImpactAnalysisPrompt,
   buildRepositoryAnalysisPrompt,
   buildScoringPrompt,
+  type PromptParts,
 } from "./prompts.js";
+import { recordUsage } from "./usageTracker.js";
 
-const MODEL = "claude-opus-5";
+const DEFAULT_MODEL = "claude-opus-5";
 const MAX_TOKENS = 16000;
+
+// Every call re-sends the repository profile + file excerpts (often tens of
+// thousands of tokens) unchanged across a clarification round's repeated
+// calls, and across a re-score of the same requirement - see prompts.ts
+// PromptParts. A 1-hour TTL survives the human-in-the-loop gaps between
+// those calls (answering a question, reviewing facts); the default 5-minute
+// TTL would miss almost every one of them.
+const CACHE_TTL = "1h" as const;
 
 export class AnthropicProvider implements AIProvider {
   private readonly client: Anthropic;
+  private readonly model: string;
 
-  constructor(apiKey: string) {
+  constructor(apiKey: string, model: string = DEFAULT_MODEL) {
     this.client = new Anthropic({ apiKey });
+    this.model = model;
   }
 
   async analyzeRepository(
     repository: RepositoryIdentity,
     context: RepositoryContext,
   ): Promise<RepositoryProfile> {
-    const { system, user } = buildRepositoryAnalysisPrompt(repository, context);
-    return this.parse<RepositoryProfile>(system, user, RepositoryProfileSchema, "analyzeRepository");
+    const prompt = buildRepositoryAnalysisPrompt(repository, context);
+    return this.parse<RepositoryProfile>(prompt, RepositoryProfileSchema, "analyzeRepository");
   }
 
   async resolveRequirementContext(
@@ -53,10 +65,9 @@ export class AnthropicProvider implements AIProvider {
     context: RepositoryContext,
     answeredClarifications: Clarification[],
   ): Promise<ContextResolutionOutput> {
-    const { system, user } = buildContextResolutionPrompt(requirement, profile, context, answeredClarifications);
+    const prompt = buildContextResolutionPrompt(requirement, profile, context, answeredClarifications);
     return this.parse<ContextResolutionOutput>(
-      system,
-      user,
+      prompt,
       ContextResolutionOutputSchema,
       "resolveRequirementContext",
     );
@@ -68,8 +79,8 @@ export class AnthropicProvider implements AIProvider {
     context: RepositoryContext,
     knowledge: ResolvedRequirementKnowledge,
   ): Promise<ImpactAnalysis> {
-    const { system, user } = buildImpactAnalysisPrompt(requirement, profile, context, knowledge);
-    return this.parse<ImpactAnalysis>(system, user, ImpactAnalysisSchema, "analyzeRequirement");
+    const prompt = buildImpactAnalysisPrompt(requirement, profile, context, knowledge);
+    return this.parse<ImpactAnalysis>(prompt, ImpactAnalysisSchema, "analyzeRequirement");
   }
 
   async scoreRequirement(
@@ -79,33 +90,52 @@ export class AnthropicProvider implements AIProvider {
     context: RepositoryContext,
     knowledge: ResolvedRequirementKnowledge,
   ): Promise<ScoringOutput> {
-    const { system, user } = buildScoringPrompt(requirement, profile, impact, context, knowledge);
-    return this.parse<ScoringOutput>(system, user, ScoringOutputSchema, "scoreRequirement");
+    const prompt = buildScoringPrompt(requirement, profile, impact, context, knowledge);
+    return this.parse<ScoringOutput>(prompt, ScoringOutputSchema, "scoreRequirement");
   }
 
   private async parse<T>(
-    system: string,
-    user: string,
+    prompt: PromptParts,
     schema: Parameters<typeof betaZodOutputFormat>[0],
     step: string,
   ): Promise<T> {
     try {
-      // `thinking.type: "adaptive"` and `output_config.effort` are live
-      // Claude Opus 5 API features that the installed @anthropic-ai/sdk
-      // version's TypeScript definitions don't model yet (verified directly
-      // against the API - the SDK's own `enabled`/`budget_tokens` shape is
-      // rejected by the server for this model). The `as never` cast is a
-      // narrow, documented escape hatch for this known type/API drift, not
-      // a general bypass - remove it once the SDK ships matching types.
+      // `thinking.type: "adaptive"`, `output_config.effort`, and the
+      // content-block `cache_control` breakpoints below are live Claude
+      // Opus 5 API features that the installed @anthropic-ai/sdk version's
+      // TypeScript definitions for `beta.messages.parse` don't fully model
+      // yet (verified directly against the API - the SDK's own
+      // `enabled`/`budget_tokens` shape is rejected by the server for this
+      // model). The `as never` cast is a narrow, documented escape hatch for
+      // this known type/API drift, not a general bypass - remove it once
+      // the SDK ships matching types.
       const response = await this.client.beta.messages.parse({
-        model: MODEL,
+        model: this.model,
         max_tokens: MAX_TOKENS,
         thinking: { type: "adaptive" },
         output_config: { effort: "high" },
         output_format: betaZodOutputFormat(schema),
-        system,
-        messages: [{ role: "user", content: user }],
+        system: [{ type: "text", text: prompt.system, cache_control: { type: "ephemeral", ttl: CACHE_TTL } }],
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: prompt.stableContext, cache_control: { type: "ephemeral", ttl: CACHE_TTL } },
+              { type: "text", text: prompt.volatile },
+            ],
+          },
+        ],
       } as never);
+
+      if (response.usage) {
+        await recordUsage("anthropic", response.model ?? this.model, step, {
+          inputTokens: response.usage.input_tokens,
+          outputTokens: response.usage.output_tokens,
+          cacheWrite5mTokens: response.usage.cache_creation?.ephemeral_5m_input_tokens ?? 0,
+          cacheWrite1hTokens: response.usage.cache_creation?.ephemeral_1h_input_tokens ?? 0,
+          cacheReadTokens: response.usage.cache_read_input_tokens ?? 0,
+        });
+      }
 
       if (response.stop_reason === "refusal") {
         throw new AIProviderError(`AI provider refused the ${step} request for safety reasons.`);

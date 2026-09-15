@@ -23,7 +23,20 @@ services:
     environment:
       PORT: 4000
       DATABASE_URL: postgres://${POSTGRES_USER:-du_calculator}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-du_calculator}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY is required}
+      # Which AIProvider is active - see backend/src/ai/getAIProvider.ts. Only
+      # the credential for the selected AI_PROVIDER actually needs a value;
+      # config.ts validates that lazily on first AI call, not here, since a
+      # docker-compose-level ":?required" would force ANTHROPIC_API_KEY even
+      # when running with AI_PROVIDER=openai/openrouter/local.
+      AI_PROVIDER: ${AI_PROVIDER:-anthropic}
+      AI_MODEL: ${AI_MODEL:-}
+      AI_BASE_URL: ${AI_BASE_URL:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      LOCAL_AI_API_KEY: ${LOCAL_AI_API_KEY:-}
+      AI_CUSTOM_INPUT_PRICE_PER_MTOK: ${AI_CUSTOM_INPUT_PRICE_PER_MTOK:-}
+      AI_CUSTOM_OUTPUT_PRICE_PER_MTOK: ${AI_CUSTOM_OUTPUT_PRICE_PER_MTOK:-}
       PRICE_PER_DU: ${PRICE_PER_DU:-300}
       GIT_CLONE_TIMEOUT_MS: ${GIT_CLONE_TIMEOUT_MS:-60000}
       GIT_MAX_REPO_FILES: ${GIT_MAX_REPO_FILES:-5000}
