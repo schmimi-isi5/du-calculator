@@ -17,10 +17,12 @@ const MAX_SNAPSHOT_LIMIT = 200;
 repositoryRouter.post("/analyze", asyncHandler(async (req, res) => {
   let repositoryUrl: string;
   let branch: string;
+  let accessToken: string | undefined;
   try {
-    const validated = validateRepositoryInput(req.body?.repositoryUrl, req.body?.branch);
+    const validated = validateRepositoryInput(req.body?.repositoryUrl, req.body?.branch, req.body?.accessToken);
     repositoryUrl = validated.repositoryUrl;
     branch = validated.branch;
+    accessToken = validated.accessToken;
   } catch (err) {
     if (err instanceof InvalidRepositoryInputError) {
       res.status(400).json({ error: err.message });
@@ -44,7 +46,7 @@ repositoryRouter.post("/analyze", asyncHandler(async (req, res) => {
 
   let workingDir: string | undefined;
   try {
-    const { commitSha, fileTree, workingDir: dir } = await cloneAndReadRepository(repositoryUrl, branch);
+    const { commitSha, fileTree, workingDir: dir } = await cloneAndReadRepository(repositoryUrl, branch, accessToken);
     workingDir = dir;
     snapshot.commitSha = commitSha;
     snapshot.status = "ANALYZING";

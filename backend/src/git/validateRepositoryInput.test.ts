@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { InvalidRepositoryInputError, validateRepositoryInput } from "./validateRepositoryInput.js";
+import {
+  buildAuthenticatedCloneUrl,
+  InvalidRepositoryInputError,
+  validateRepositoryInput,
+} from "./validateRepositoryInput.js";
 
 describe("validateRepositoryInput", () => {
   it("accepts a well-formed https URL and branch", () => {
@@ -47,5 +51,50 @@ describe("validateRepositoryInput", () => {
 
   it("rejects malformed URLs", () => {
     expect(() => validateRepositoryInput("not a url", "main")).toThrow(InvalidRepositoryInputError);
+  });
+
+  it("accepts and trims an optional accessToken", () => {
+    const result = validateRepositoryInput("https://github.com/example/repo.git", "main", "  ghp_abc123  ");
+    expect(result.accessToken).toBe("ghp_abc123");
+  });
+
+  it("treats an empty or missing accessToken as absent", () => {
+    expect(validateRepositoryInput("https://github.com/example/repo.git", "main").accessToken).toBeUndefined();
+    expect(validateRepositoryInput("https://github.com/example/repo.git", "main", "").accessToken).toBeUndefined();
+    expect(validateRepositoryInput("https://github.com/example/repo.git", "main", "   ").accessToken).toBeUndefined();
+  });
+
+  it("rejects an accessToken containing whitespace or control characters", () => {
+    expect(() => validateRepositoryInput("https://github.com/example/repo.git", "main", "abc def")).toThrow(
+      InvalidRepositoryInputError,
+    );
+    expect(() => validateRepositoryInput("https://github.com/example/repo.git", "main", "abc\ndef")).toThrow(
+      InvalidRepositoryInputError,
+    );
+  });
+
+  it("rejects an excessively long accessToken", () => {
+    expect(() => validateRepositoryInput("https://github.com/example/repo.git", "main", "a".repeat(600))).toThrow(
+      InvalidRepositoryInputError,
+    );
+  });
+
+  it("rejects a repositoryUrl with embedded credentials - accessToken must be used instead", () => {
+    expect(() =>
+      validateRepositoryInput("https://user:pass@github.com/example/repo.git", "main"),
+    ).toThrow(InvalidRepositoryInputError);
+  });
+});
+
+describe("buildAuthenticatedCloneUrl", () => {
+  it("embeds the access token as the URL username", () => {
+    const url = buildAuthenticatedCloneUrl("https://github.com/example/repo.git", "ghp_abc123");
+    expect(url).toBe("https://ghp_abc123@github.com/example/repo.git");
+  });
+
+  it("percent-encodes special characters in the token", () => {
+    const url = buildAuthenticatedCloneUrl("https://github.com/example/repo.git", "a/b c");
+    const parsed = new URL(url);
+    expect(decodeURIComponent(parsed.username)).toBe("a/b c");
   });
 });

@@ -31,14 +31,22 @@ const BLOCKED_HOSTNAME_PATTERNS = [
   /^169\.254\./,
 ];
 
+const MAX_ACCESS_TOKEN_LENGTH = 512;
+// Tokens never legitimately contain whitespace/control characters; reject
+// them outright rather than letting oddities flow into a URL.
+const ACCESS_TOKEN_PATTERN = /^[\x21-\x7e]+$/;
+
 export interface ValidatedRepositoryInput {
   repositoryUrl: string;
   branch: string;
+  /** Present only when the caller supplied one - see AccessToken rules below. */
+  accessToken?: string;
 }
 
 export function validateRepositoryInput(
   repositoryUrlRaw: unknown,
   branchRaw: unknown,
+  accessTokenRaw?: unknown,
 ): ValidatedRepositoryInput {
   if (typeof repositoryUrlRaw !== "string" || repositoryUrlRaw.trim().length === 0) {
     throw new InvalidRepositoryInputError("repositoryUrl is required.");
@@ -73,5 +81,40 @@ export function validateRepositoryInput(
     );
   }
 
-  return { repositoryUrl: parsed.toString(), branch };
+  if (parsed.username || parsed.password) {
+    throw new InvalidRepositoryInputError(
+      "repositoryUrl must not contain embedded credentials. Use the accessToken field instead.",
+    );
+  }
+
+  let accessToken: string | undefined;
+  if (accessTokenRaw !== undefined && accessTokenRaw !== null && accessTokenRaw !== "") {
+    if (typeof accessTokenRaw !== "string") {
+      throw new InvalidRepositoryInputError("accessToken must be a string.");
+    }
+    const trimmed = accessTokenRaw.trim();
+    if (trimmed.length === 0) {
+      accessToken = undefined;
+    } else if (trimmed.length > MAX_ACCESS_TOKEN_LENGTH || !ACCESS_TOKEN_PATTERN.test(trimmed)) {
+      throw new InvalidRepositoryInputError("accessToken contains invalid characters or is too long.");
+    } else {
+      accessToken = trimmed;
+    }
+  }
+
+  return { repositoryUrl: parsed.toString(), branch, accessToken };
+}
+
+/**
+ * Builds the clone URL with the access token embedded as the HTTPS
+ * username (the convention GitHub, GitLab, and most other hosts accept for
+ * personal access tokens: `https://<token>@host/...`). The caller must use
+ * this URL only for the git process invocation - never log it or return it
+ * to the client. Pass the original, credential-free repositoryUrl for
+ * anything user-facing (snapshots, logs, error messages).
+ */
+export function buildAuthenticatedCloneUrl(repositoryUrl: string, accessToken: string): string {
+  const url = new URL(repositoryUrl);
+  url.username = accessToken;
+  return url.toString();
 }
