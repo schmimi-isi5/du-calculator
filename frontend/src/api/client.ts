@@ -1,7 +1,9 @@
 import type {
+  AssumptionAction,
   Requirement,
   RepositorySnapshot,
   RepositorySnapshotSummary,
+  RequirementContext,
   ScoringHistoryEntry,
   ScoringResult,
 } from "../types";
@@ -71,8 +73,42 @@ export function getRepositorySnapshot(id: string): Promise<RepositorySnapshot> {
   return getJson<RepositorySnapshot>(`/api/repository/${encodeURIComponent(id)}`);
 }
 
-export function scoreRequirement(snapshotId: string, requirement: Requirement): Promise<ScoringResult> {
-  return postJson<ScoringResult>("/api/requirement/score", { snapshotId, requirement });
+export function resolveRequirementContext(
+  snapshotId: string,
+  requirement: Requirement,
+): Promise<RequirementContext> {
+  return postJson<RequirementContext>("/api/requirement-context", { snapshotId, requirement });
+}
+
+export function getRequirementContext(id: string): Promise<RequirementContext> {
+  return getJson<RequirementContext>(`/api/requirement-context/${encodeURIComponent(id)}`);
+}
+
+export function answerClarification(
+  contextId: string,
+  clarificationId: string,
+  answer: string,
+): Promise<RequirementContext> {
+  return postJson<RequirementContext>(
+    `/api/requirement-context/${encodeURIComponent(contextId)}/clarifications/${encodeURIComponent(clarificationId)}/answer`,
+    { answer },
+  );
+}
+
+export function applyAssumptionAction(
+  contextId: string,
+  assumptionId: string,
+  action: AssumptionAction,
+  editedText?: string,
+): Promise<RequirementContext> {
+  return postJson<RequirementContext>(
+    `/api/requirement-context/${encodeURIComponent(contextId)}/assumptions/${encodeURIComponent(assumptionId)}`,
+    { action, editedText },
+  );
+}
+
+export function scoreRequirement(contextId: string): Promise<ScoringResult> {
+  return postJson<ScoringResult>("/api/requirement/score", { contextId });
 }
 
 export function getScoringHistory(): Promise<ScoringHistoryEntry[]> {

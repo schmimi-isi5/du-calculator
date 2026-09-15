@@ -29,6 +29,28 @@ ALTER TABLE repository_snapshots ADD COLUMN IF NOT EXISTS omitted_file_count INT
 
 CREATE INDEX IF NOT EXISTS idx_repository_snapshots_created_at ON repository_snapshots (created_at DESC);
 
+-- Assumption & Clarification Engine: the living state of "what do we know
+-- about this requirement" - normalization, facts, assumptions, missing
+-- information, and the clarification dialog. See domain/types.ts
+-- RequirementContext and scoring/clarificationGate.ts for the logic that
+-- reads and updates this.
+CREATE TABLE IF NOT EXISTS requirement_contexts (
+  id UUID PRIMARY KEY,
+  snapshot_id UUID NOT NULL REFERENCES repository_snapshots(id),
+  requirement JSONB NOT NULL,
+  normalization JSONB,
+  known_facts JSONB NOT NULL DEFAULT '[]',
+  assumptions JSONB NOT NULL DEFAULT '[]',
+  missing_information JSONB NOT NULL DEFAULT '[]',
+  clarifications JSONB NOT NULL DEFAULT '[]',
+  status TEXT NOT NULL,
+  error_message TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_requirement_contexts_snapshot_id ON requirement_contexts (snapshot_id);
+
 CREATE TABLE IF NOT EXISTS scoring_results (
   id UUID PRIMARY KEY,
   snapshot_id UUID NOT NULL REFERENCES repository_snapshots(id),
@@ -44,6 +66,13 @@ CREATE TABLE IF NOT EXISTS scoring_results (
   scored_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Added for the Assumption & Clarification Engine: which resolved context
+-- (facts/assumptions) this assessment was scored from, and the consolidated
+-- set of assumption ids it actually relied on - the audit trail behind
+-- "why was this requirement scored at X DU on this date".
+ALTER TABLE scoring_results ADD COLUMN IF NOT EXISTS requirement_context_id UUID REFERENCES requirement_contexts(id);
+ALTER TABLE scoring_results ADD COLUMN IF NOT EXISTS assumptions_used JSONB NOT NULL DEFAULT '[]';
 
 CREATE INDEX IF NOT EXISTS idx_scoring_results_created_at ON scoring_results (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_scoring_results_snapshot_id ON scoring_results (snapshot_id);

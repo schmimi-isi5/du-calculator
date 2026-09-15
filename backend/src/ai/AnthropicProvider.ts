@@ -5,17 +5,29 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
-import { ImpactAnalysisSchema, RepositoryProfileSchema, ScoringOutputSchema } from "../domain/schemas.js";
+import {
+  ContextResolutionOutputSchema,
+  ImpactAnalysisSchema,
+  RepositoryProfileSchema,
+  ScoringOutputSchema,
+} from "../domain/schemas.js";
 import type {
+  Clarification,
+  ContextResolutionOutput,
   ImpactAnalysis,
   Requirement,
   RepositoryContext,
   RepositoryProfile,
   ScoringOutput,
 } from "../domain/types.js";
-import type { AIProvider, RepositoryIdentity } from "./AIProvider.js";
+import type { AIProvider, RepositoryIdentity, ResolvedRequirementKnowledge } from "./AIProvider.js";
 import { AIProviderError } from "./AIProvider.js";
-import { buildImpactAnalysisPrompt, buildRepositoryAnalysisPrompt, buildScoringPrompt } from "./prompts.js";
+import {
+  buildContextResolutionPrompt,
+  buildImpactAnalysisPrompt,
+  buildRepositoryAnalysisPrompt,
+  buildScoringPrompt,
+} from "./prompts.js";
 
 const MODEL = "claude-opus-5";
 const MAX_TOKENS = 16000;
@@ -35,12 +47,28 @@ export class AnthropicProvider implements AIProvider {
     return this.parse<RepositoryProfile>(system, user, RepositoryProfileSchema, "analyzeRepository");
   }
 
+  async resolveRequirementContext(
+    requirement: Requirement,
+    profile: RepositoryProfile,
+    context: RepositoryContext,
+    answeredClarifications: Clarification[],
+  ): Promise<ContextResolutionOutput> {
+    const { system, user } = buildContextResolutionPrompt(requirement, profile, context, answeredClarifications);
+    return this.parse<ContextResolutionOutput>(
+      system,
+      user,
+      ContextResolutionOutputSchema,
+      "resolveRequirementContext",
+    );
+  }
+
   async analyzeRequirement(
     requirement: Requirement,
     profile: RepositoryProfile,
     context: RepositoryContext,
+    knowledge: ResolvedRequirementKnowledge,
   ): Promise<ImpactAnalysis> {
-    const { system, user } = buildImpactAnalysisPrompt(requirement, profile, context);
+    const { system, user } = buildImpactAnalysisPrompt(requirement, profile, context, knowledge);
     return this.parse<ImpactAnalysis>(system, user, ImpactAnalysisSchema, "analyzeRequirement");
   }
 
@@ -49,8 +77,9 @@ export class AnthropicProvider implements AIProvider {
     profile: RepositoryProfile,
     impact: ImpactAnalysis,
     context: RepositoryContext,
+    knowledge: ResolvedRequirementKnowledge,
   ): Promise<ScoringOutput> {
-    const { system, user } = buildScoringPrompt(requirement, profile, impact, context);
+    const { system, user } = buildScoringPrompt(requirement, profile, impact, context, knowledge);
     return this.parse<ScoringOutput>(system, user, ScoringOutputSchema, "scoreRequirement");
   }
 

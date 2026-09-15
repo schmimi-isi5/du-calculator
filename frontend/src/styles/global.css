@@ -452,6 +452,12 @@ textarea {
   margin-top: 4px;
 }
 
+.dim-trace {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
 .hero {
   background: linear-gradient(135deg, var(--teal), #005e68);
   color: #fff;
@@ -825,4 +831,118 @@ code.file-path {
   font-size: 11px;
   color: var(--muted);
   margin-top: 2px;
+}
+
+.context-section {
+  margin-top: 12px;
+}
+
+.context-section:first-child {
+  margin-top: 0;
+}
+
+.context-section-title {
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.context-hint {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 4px 0 10px;
+}
+
+.context-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.context-source-tag {
+  font-size: 9px;
+  font-weight: 800;
+  background: #f2f6f4;
+  color: var(--muted);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.clarification-question {
+  background: var(--warn-tint);
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 10px;
+}
+
+.clarification-question-text {
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.assumption-row {
+  border-top: 1px solid #edf1f0;
+  padding: 10px 0;
+  font-size: 12px;
+}
+
+.assumption-row:first-of-type {
+  border-top: 0;
+}
+
+.assumption-row.status-REJECTED {
+  opacity: 0.55;
+}
+
+.assumption-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+
+.criticality-badge {
+  font-size: 9px;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: 6px;
+}
+
+.criticality-badge.LOW {
+  background: var(--green-tint);
+  color: #3d6b09;
+}
+
+.criticality-badge.MEDIUM {
+  background: var(--warn-tint);
+  color: #7a5b00;
+}
+
+.criticality-badge.HIGH {
+  background: var(--danger-tint);
+  color: var(--danger);
+}
+
+.assumption-status-label {
+  font-size: 10px;
+  color: var(--muted);
+  margin-left: auto;
+}
+
+.assumption-text {
+  margin: 6px 0 4px;
+  font-weight: 600;
+}
+
+.assumption-reason,
+.assumption-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.assumption-meta {
+  margin-top: 4px;
 }

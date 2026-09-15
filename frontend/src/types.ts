@@ -10,6 +10,7 @@ export type ScoringStatus =
   | "ANALYZING"
   | "NEEDS_CLARIFICATION"
   | "SCORED"
+  | "ASSESSMENT_WITH_ASSUMPTIONS"
   | "DECOMPOSITION_REQUIRED"
   | "ERROR";
 
@@ -108,6 +109,9 @@ export interface DimensionScore {
   evidence: Evidence[];
   confidence: number;
   missingInformation: string[];
+  factsUsed: string[];
+  assumptionsUsed: string[];
+  unresolvedRisks: string[];
 }
 
 export type DimensionScores = Record<DimensionKey, DimensionScore>;
@@ -131,6 +135,7 @@ export interface ConfidenceAssessment {
 export interface ScoringResult {
   id: string;
   snapshotId: string;
+  requirementContextId: string | null;
   requirement: Requirement;
   status: ScoringStatus;
   impactAnalysis: ImpactAnalysis | null;
@@ -138,10 +143,99 @@ export interface ScoringResult {
   confidence: ConfidenceAssessment | null;
   duResult: DuResult | null;
   overallAssessment: LocalizedText | null;
+  assumptionsUsed: string[];
   openQuestions: string[];
   errorMessage: string | null;
   scoredAt: string | null;
 }
+
+// ---------------------------------------------------------------------------
+// Assumption & Clarification Engine
+// ---------------------------------------------------------------------------
+
+export type InformationClass = "FACT" | "DERIVED" | "ASSUMPTION" | "CLARIFICATION_REQUIRED" | "UNKNOWN_NON_BLOCKING";
+
+export type KnownFactSource = "REQUIREMENT" | "ACCEPTANCE_CRITERIA" | "CLARIFICATION_ANSWER" | "REPOSITORY" | "DERIVED";
+
+export interface KnownFact {
+  id: string;
+  topic: string;
+  fact: string;
+  source: KnownFactSource;
+  evidence: Evidence[];
+}
+
+export type AssumptionCriticality = "LOW" | "MEDIUM" | "HIGH";
+export type AssumptionStatus = "ACTIVE" | "CONFIRMED" | "REJECTED" | "SUPERSEDED";
+
+export interface Assumption {
+  id: string;
+  topic: string;
+  assumption: string;
+  reason: string;
+  basis: string[];
+  confidence: number;
+  affectedDimensions: DimensionKey[];
+  potentialScoreImpact: 0 | 1 | 2;
+  criticality: AssumptionCriticality;
+  status: AssumptionStatus;
+}
+
+export interface MissingInformation {
+  id: string;
+  topic: string;
+  question: string;
+  classification: InformationClass;
+  potentialScoreImpact: 0 | 1 | 2;
+  affectedDimensions: DimensionKey[];
+  reasoning: string;
+}
+
+export type ClarificationStatus = "PENDING" | "ANSWERED" | "SKIPPED";
+
+export interface Clarification {
+  id: string;
+  missingInformationId: string;
+  question: string;
+  priority: number;
+  status: ClarificationStatus;
+  answer: string | null;
+  answeredAt: string | null;
+}
+
+export interface RequirementNormalization {
+  objective: string;
+  businessGoal: string;
+  functionalRequirements: string[];
+  nonFunctionalRequirements: string[];
+  acceptanceCriteria: string[];
+  technicalConstraints: string[];
+  mentionedSystems: string[];
+  mentionedDataSources: string[];
+  mentionedIntegrations: string[];
+  mentionedExistingComponents: string[];
+  assumptionsAlreadyContainedInRequirement: string[];
+  unresolvedInformation: string[];
+}
+
+export type RequirementContextStatus = "AWAITING_CLARIFICATION" | "RESOLVED" | "ERROR";
+
+export interface RequirementContext {
+  id: string;
+  snapshotId: string;
+  requirement: Requirement;
+  normalization: RequirementNormalization | null;
+  knownFacts: KnownFact[];
+  assumptions: Assumption[];
+  missingInformation: MissingInformation[];
+  clarifications: Clarification[];
+  status: RequirementContextStatus;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type AssumptionAction = "CONFIRM" | "REJECT" | "EDIT";
 
 /** One row of the requirement -> DU decision history list. */
 export interface ScoringHistoryEntry {

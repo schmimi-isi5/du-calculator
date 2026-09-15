@@ -2,9 +2,10 @@ import { Router } from "express";
 import { AIProviderError } from "../ai/AIProvider.js";
 import { getAIProvider } from "../ai/getAIProvider.js";
 import { config } from "../config.js";
-import type { DimensionScores, ImpactAnalysis, Requirement, ScoringResult } from "../domain/types.js";
+import type { ImpactAnalysis, ScoringResult } from "../domain/types.js";
 import { logger } from "../logging.js";
-import { computeDuResult } from "../scoring/duEngine.js";
+import { activeAssumptions } from "../scoring/clarificationGate.js";
+import { computeDuResult, determineScoringStatus } from "../scoring/duEngine.js";
 import { store } from "../store/PostgresScoringStore.js";
 import { asyncHandler } from "./asyncHandler.js";
 
@@ -14,19 +15,31 @@ const DEFAULT_HISTORY_LIMIT = 50;
 const MAX_HISTORY_LIMIT = 200;
 
 requirementRouter.post("/score", asyncHandler(async (req, res) => {
-  const { snapshotId, requirement: requirementInput } = req.body ?? {};
+  const { contextId } = req.body ?? {};
 
-  if (typeof snapshotId !== "string" || snapshotId.length === 0) {
-    res.status(400).json({ error: "snapshotId is required." });
+  if (typeof contextId !== "string" || contextId.length === 0) {
+    res.status(400).json({ error: "contextId is required." });
     return;
   }
 
+  const requirementContext = await store.getRequirementContext(contextId);
+  if (!requirementContext) {
+    res.status(404).json({ error: "Requirement context not found." });
+    return;
+  }
+  if (requirementContext.status !== "RESOLVED") {
+    res.status(400).json({
+      error:
+        requirementContext.status === "AWAITING_CLARIFICATION"
+          ? "This requirement still has open clarification questions. Answer them before scoring."
+          : "Requirement context is not ready for scoring.",
+    });
+    return;
+  }
+
+  const { snapshotId, requirement } = requirementContext;
   const snapshot = await store.getSnapshot(snapshotId);
-  if (!snapshot) {
-    res.status(404).json({ error: "Repository snapshot not found." });
-    return;
-  }
-  if (snapshot.status !== "SNAPSHOT_CREATED" || !snapshot.profile) {
+  if (!snapshot || snapshot.status !== "SNAPSHOT_CREATED" || !snapshot.profile) {
     res.status(400).json({ error: "Repository has not been successfully analyzed yet." });
     return;
   }
@@ -39,17 +52,10 @@ requirementRouter.post("/score", asyncHandler(async (req, res) => {
     return;
   }
 
-  let requirement: Requirement;
-  try {
-    requirement = parseRequirement(requirementInput);
-  } catch (err) {
-    res.status(400).json({ error: err instanceof Error ? err.message : "Invalid requirement." });
-    return;
-  }
-
   const result: ScoringResult = {
     id: store.createScoringId(),
     snapshotId,
+    requirementContextId: contextId,
     requirement,
     status: "ANALYZING",
     impactAnalysis: null,
@@ -57,6 +63,7 @@ requirementRouter.post("/score", asyncHandler(async (req, res) => {
     confidence: null,
     duResult: null,
     overallAssessment: null,
+    assumptionsUsed: [],
     openQuestions: [],
     errorMessage: null,
     scoredAt: null,
@@ -65,34 +72,54 @@ requirementRouter.post("/score", asyncHandler(async (req, res) => {
 
   try {
     const aiProvider = getAIProvider();
-    const impactAnalysis = await aiProvider.analyzeRequirement(requirement, snapshot.profile, context);
-    const scoringOutput = await aiProvider.scoreRequirement(requirement, snapshot.profile, impactAnalysis, context);
+    const knowledge = {
+      knownFacts: requirementContext.knownFacts,
+      assumptions: requirementContext.assumptions,
+    };
+    const availableAssumptionIds = new Set(activeAssumptions(requirementContext.assumptions).map((a) => a.id));
+
+    const impactAnalysis = await aiProvider.analyzeRequirement(requirement, snapshot.profile, context, knowledge);
+    const scoringOutput = await aiProvider.scoreRequirement(
+      requirement,
+      snapshot.profile,
+      impactAnalysis,
+      context,
+      knowledge,
+    );
     const engineResult = computeDuResult(scoringOutput.dimensions, config.pricePerDU);
+
+    // Only assumptions that are actually still active may count - a score
+    // that cites a rejected assumption's id is a modeling bug, not a valid
+    // "assumption used".
+    const assumptionsUsed = Array.from(
+      new Set(
+        Object.values(scoringOutput.dimensions)
+          .flatMap((d) => d.assumptionsUsed)
+          .filter((id) => availableAssumptionIds.has(id)),
+      ),
+    );
 
     result.impactAnalysis = impactAnalysis;
     result.dimensionScores = scoringOutput.dimensions;
     result.overallAssessment = scoringOutput.overallAssessment;
+    result.assumptionsUsed = assumptionsUsed;
     result.confidence = {
       overallConfidence: engineResult.overallConfidence,
       confidenceLevel: engineResult.confidenceLevel,
     };
     result.scoredAt = new Date().toISOString();
+    result.status = determineScoringStatus(engineResult, assumptionsUsed.length);
 
-    if (engineResult.confidenceLevel === "LOW") {
-      result.status = "NEEDS_CLARIFICATION";
+    if (result.status === "NEEDS_CLARIFICATION") {
       result.duResult = null;
       result.openQuestions = collectOpenQuestions(impactAnalysis, scoringOutput.dimensions);
-    } else if (engineResult.duClass === "XXL") {
-      result.status = "DECOMPOSITION_REQUIRED";
-      result.duResult = engineResult;
     } else {
-      result.status = "SCORED";
       result.duResult = engineResult;
     }
   } catch (err) {
     result.status = "ERROR";
     result.errorMessage = describeError(err);
-    logger.error("Requirement scoring failed", { scoringId: result.id, snapshotId, error: result.errorMessage });
+    logger.error("Requirement scoring failed", { scoringId: result.id, contextId, error: result.errorMessage });
   }
 
   await store.saveScoringResult(result);
@@ -122,35 +149,9 @@ requirementRouter.get("/:id", asyncHandler(async (req, res) => {
   res.status(200).json(result);
 }));
 
-function parseRequirement(input: unknown): Requirement {
-  if (typeof input !== "object" || input === null) {
-    throw new Error("requirement is required.");
-  }
-  const value = input as Record<string, unknown>;
-  const title = typeof value.title === "string" ? value.title.trim() : "";
-  const description = typeof value.description === "string" ? value.description.trim() : "";
-
-  if (!title) throw new Error("requirement.title is required.");
-  if (!description) throw new Error("requirement.description is required.");
-
-  return {
-    title,
-    description,
-    acceptanceCriteria: toStringArray(value.acceptanceCriteria),
-    constraints: toStringArray(value.constraints),
-  };
-}
-
-function toStringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
-    .map((entry) => entry.trim());
-}
-
-function collectOpenQuestions(impact: ImpactAnalysis, scores: DimensionScores): string[] {
+function collectOpenQuestions(impact: ImpactAnalysis, scores: ScoringResult["dimensionScores"]): string[] {
   const fromImpact = impact.openQuestions;
-  const fromDimensions = Object.values(scores).flatMap((s) => s.missingInformation);
+  const fromDimensions = scores ? Object.values(scores).flatMap((s) => s.missingInformation) : [];
   return Array.from(new Set([...fromImpact, ...fromDimensions]));
 }
 

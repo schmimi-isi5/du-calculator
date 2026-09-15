@@ -1,15 +1,25 @@
 import { useState } from "react";
-import { analyzeRepository, ApiError, getRepositorySnapshot, getScoringResult, scoreRequirement } from "./api/client";
+import {
+  analyzeRepository,
+  answerClarification,
+  ApiError,
+  applyAssumptionAction,
+  getRepositorySnapshot,
+  getScoringResult,
+  resolveRequirementContext,
+  scoreRequirement,
+} from "./api/client";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { RepositoryPanel } from "./components/RepositoryPanel";
 import { RepositoryPicker } from "./components/RepositoryPicker";
 import { RepositorySummaryBar } from "./components/RepositorySummaryBar";
+import { RequirementContextPanel } from "./components/RequirementContextPanel";
 import { RequirementPanel } from "./components/RequirementPanel";
 import { ResultHero } from "./components/ResultHero";
 import { ScoringPanel } from "./components/ScoringPanel";
 import type { WizardStep } from "./components/WizardSteps";
 import { WizardSteps } from "./components/WizardSteps";
-import type { RepositorySnapshot, ScoringResult, UiLanguage } from "./types";
+import type { AssumptionAction, RepositorySnapshot, RequirementContext, ScoringResult, UiLanguage } from "./types";
 
 function linesToList(value: string): string[] {
   return value
@@ -37,6 +47,11 @@ export default function App() {
   const [description, setDescription] = useState("");
   const [acceptanceCriteria, setAcceptanceCriteria] = useState("");
   const [constraints, setConstraints] = useState("");
+
+  const [requirementContext, setRequirementContext] = useState<RequirementContext | null>(null);
+  const [contextLoading, setContextLoading] = useState(false);
+  const [contextRequestError, setContextRequestError] = useState<string | null>(null);
+
   const [scoringResult, setScoringResult] = useState<ScoringResult | null>(null);
   const [scoringLoading, setScoringLoading] = useState(false);
 
@@ -47,12 +62,14 @@ export default function App() {
   const [historyDetailError, setHistoryDetailError] = useState<string | null>(null);
 
   const isRepositoryReady = snapshot?.status === "SNAPSHOT_CREATED";
+  const isContextResolved = requirementContext?.status === "RESOLVED";
   const maxReachableStep: WizardStep = scoringLoading || scoringResult ? 3 : isRepositoryReady ? 2 : 1;
 
   async function handleAnalyze() {
     setRepoLoading(true);
     setRepoRequestError(null);
     setSnapshot(null);
+    setRequirementContext(null);
     setScoringResult(null);
     try {
       const result = await analyzeRepository(repositoryUrl, branch, accessToken);
@@ -70,6 +87,7 @@ export default function App() {
   async function handleUseExistingRepository(id: string) {
     setRepoLoading(true);
     setRepoRequestError(null);
+    setRequirementContext(null);
     setScoringResult(null);
     try {
       const result = await getRepositorySnapshot(id);
@@ -85,41 +103,86 @@ export default function App() {
 
   function handleChangeRepository() {
     setSnapshot(null);
+    setRequirementContext(null);
     setScoringResult(null);
     setWizardStep(1);
   }
 
-  async function handleScore() {
+  async function handleResolveContext() {
     if (!snapshot || snapshot.status !== "SNAPSHOT_CREATED") return;
-    setWizardStep(3);
-    setScoringLoading(true);
+    setContextLoading(true);
+    setContextRequestError(null);
+    setRequirementContext(null);
     setScoringResult(null);
     try {
-      const result = await scoreRequirement(snapshot.id, {
+      const context = await resolveRequirementContext(snapshot.id, {
         title: title.trim(),
         description: description.trim(),
         acceptanceCriteria: linesToList(acceptanceCriteria),
         constraints: linesToList(constraints),
       });
+      setRequirementContext(context);
+    } catch (err) {
+      setContextRequestError(err instanceof ApiError ? err.message : "Unerwarteter Fehler.");
+    } finally {
+      setContextLoading(false);
+    }
+  }
+
+  async function handleAnswerClarification(clarificationId: string, answer: string) {
+    if (!requirementContext) return;
+    setContextLoading(true);
+    setContextRequestError(null);
+    try {
+      const updated = await answerClarification(requirementContext.id, clarificationId, answer);
+      setRequirementContext(updated);
+    } catch (err) {
+      setContextRequestError(err instanceof ApiError ? err.message : "Unerwarteter Fehler.");
+    } finally {
+      setContextLoading(false);
+    }
+  }
+
+  async function handleAssumptionAction(assumptionId: string, action: AssumptionAction, editedText?: string) {
+    if (!requirementContext) return;
+    setContextLoading(true);
+    setContextRequestError(null);
+    try {
+      const updated = await applyAssumptionAction(requirementContext.id, assumptionId, action, editedText);
+      setRequirementContext(updated);
+      // A confirmed assessment is now stale once its assumptions changed -
+      // the user re-scores explicitly rather than us silently re-spending
+      // an AI call on every click.
+      setScoringResult(null);
+    } catch (err) {
+      setContextRequestError(err instanceof ApiError ? err.message : "Unerwarteter Fehler.");
+    } finally {
+      setContextLoading(false);
+    }
+  }
+
+  async function handleScore() {
+    if (!requirementContext || requirementContext.status !== "RESOLVED") return;
+    setWizardStep(3);
+    setScoringLoading(true);
+    setScoringResult(null);
+    try {
+      const result = await scoreRequirement(requirementContext.id);
       setScoringResult(result);
-      // A new scoring result was persisted - the history list should reflect it next time it's viewed.
       setHistoryRefreshToken((token) => token + 1);
     } catch (err) {
       setScoringResult({
         id: "local-error",
-        snapshotId: snapshot.id,
-        requirement: {
-          title,
-          description,
-          acceptanceCriteria: linesToList(acceptanceCriteria),
-          constraints: linesToList(constraints),
-        },
+        snapshotId: requirementContext.snapshotId,
+        requirementContextId: requirementContext.id,
+        requirement: requirementContext.requirement,
         status: "ERROR",
         impactAnalysis: null,
         dimensionScores: null,
         confidence: null,
         duResult: null,
         overallAssessment: null,
+        assumptionsUsed: [],
         openQuestions: [],
         errorMessage: err instanceof ApiError ? err.message : "Unerwarteter Fehler.",
         scoredAt: null,
@@ -144,7 +207,8 @@ export default function App() {
     }
   }
 
-  const canSubmitRequirement = isRepositoryReady && title.trim().length > 0 && description.trim().length > 0;
+  const canSubmitRequirement =
+    isRepositoryReady && !contextLoading && title.trim().length > 0 && description.trim().length > 0;
 
   return (
     <>
@@ -214,13 +278,36 @@ export default function App() {
                   acceptanceCriteria={acceptanceCriteria}
                   constraints={constraints}
                   canSubmit={canSubmitRequirement}
-                  loading={scoringLoading}
+                  loading={contextLoading && !requirementContext}
                   onChangeTitle={setTitle}
                   onChangeDescription={setDescription}
                   onChangeAcceptanceCriteria={setAcceptanceCriteria}
                   onChangeConstraints={setConstraints}
-                  onSubmit={handleScore}
+                  onSubmit={handleResolveContext}
                 />
+
+                {contextRequestError && <div className="notice error">{contextRequestError}</div>}
+
+                {requirementContext && requirementContext.status !== "ERROR" && (
+                  <RequirementContextPanel
+                    context={requirementContext}
+                    busy={contextLoading}
+                    onAnswerClarification={handleAnswerClarification}
+                    onAssumptionAction={handleAssumptionAction}
+                  />
+                )}
+
+                {requirementContext?.status === "ERROR" && requirementContext.errorMessage && (
+                  <div className="notice error">{requirementContext.errorMessage}</div>
+                )}
+
+                {isContextResolved && (
+                  <div className="wizard-next">
+                    <button className="btn primary" onClick={handleScore}>
+                      Weiter: Bewertung starten →
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -234,6 +321,15 @@ export default function App() {
                       ← Zurück zur Anforderung
                     </button>
                   </div>
+
+                  {requirementContext && (
+                    <RequirementContextPanel
+                      context={requirementContext}
+                      busy={contextLoading}
+                      onAnswerClarification={handleAnswerClarification}
+                      onAssumptionAction={handleAssumptionAction}
+                    />
+                  )}
 
                   <ScoringPanel
                     loading={scoringLoading}

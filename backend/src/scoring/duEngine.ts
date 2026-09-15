@@ -6,7 +6,7 @@
 // scores; this module is the only place that decides what those scores mean
 // in DU terms.
 
-import type { DimensionKey, DimensionScores, DuClass, DuResult } from "../domain/types.js";
+import type { DimensionKey, DimensionScores, DuClass, DuResult, ScoringStatus } from "../domain/types.js";
 import { DIMENSION_KEYS } from "../domain/types.js";
 
 /** Fixed dimension weights from the spec. Must sum to 1.00. */
@@ -123,4 +123,21 @@ export function computeDuResult(scores: DimensionScores, pricePerDU: number | nu
     overallConfidence,
     confidenceLevel,
   };
+}
+
+/**
+ * Decides the final ScoringStatus from the deterministic DuResult plus how
+ * many assumptions the assessment relied on. Order matters: a LOW-confidence
+ * result always needs clarification regardless of assumption count (a low
+ * confidence must never be "fixed" by ignoring it), XXL always needs
+ * decomposition, and otherwise the assessment is flagged
+ * ASSESSMENT_WITH_ASSUMPTIONS whenever it leaned on at least one assumption
+ * so the user can see - and challenge - what it rests on (spec section 15).
+ * Assumptions are never allowed to change which of these buckets a result
+ * falls into - only how it is labeled once the bucket is decided.
+ */
+export function determineScoringStatus(engineResult: DuResult, assumptionsUsedCount: number): ScoringStatus {
+  if (engineResult.confidenceLevel === "LOW") return "NEEDS_CLARIFICATION";
+  if (engineResult.duClass === "XXL") return "DECOMPOSITION_REQUIRED";
+  return assumptionsUsedCount > 0 ? "ASSESSMENT_WITH_ASSUMPTIONS" : "SCORED";
 }
