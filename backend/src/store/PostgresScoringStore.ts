@@ -5,7 +5,13 @@
 
 import { randomUUID } from "node:crypto";
 import type { QueryResultRow } from "pg";
-import type { RepositorySnapshot, ScoringHistoryEntry, ScoringResult } from "../domain/types.js";
+import type {
+  RepositoryContext,
+  RepositorySnapshot,
+  RepositorySnapshotSummary,
+  ScoringHistoryEntry,
+  ScoringResult,
+} from "../domain/types.js";
 import { pool } from "../db/pool.js";
 import type { ScoringStore } from "./ScoringStore.js";
 
@@ -19,6 +25,22 @@ interface SnapshotRow extends QueryResultRow {
   file_tree: string[] | null;
   profile: RepositorySnapshot["profile"];
   error_message: string | null;
+}
+
+interface SnapshotSummaryRow extends QueryResultRow {
+  id: string;
+  repository_url: string;
+  branch: string;
+  status: string;
+  commit_sha: string | null;
+  analyzed_at: Date | null;
+  profile_summary: string | null;
+}
+
+interface ContextRow extends QueryResultRow {
+  file_tree: string[] | null;
+  file_excerpts: Record<string, string> | null;
+  omitted_file_count: number | null;
 }
 
 interface ScoringResultRow extends QueryResultRow {
@@ -63,6 +85,18 @@ function toSnapshot(row: SnapshotRow): RepositorySnapshot {
     fileTree: row.file_tree ?? [],
     profile: row.profile ?? null,
     errorMessage: row.error_message,
+  };
+}
+
+function toSnapshotSummary(row: SnapshotSummaryRow): RepositorySnapshotSummary {
+  return {
+    id: row.id,
+    repositoryUrl: row.repository_url,
+    branch: row.branch,
+    status: row.status as RepositorySnapshotSummary["status"],
+    commitSha: row.commit_sha,
+    analyzedAt: row.analyzed_at ? row.analyzed_at.toISOString() : null,
+    profileSummary: row.profile_summary,
   };
 }
 
@@ -143,6 +177,41 @@ export class PostgresScoringStore implements ScoringStore {
       [id],
     );
     return result.rows[0] ? toSnapshot(result.rows[0]) : undefined;
+  }
+
+  async listSnapshots(limit: number): Promise<RepositorySnapshotSummary[]> {
+    const result = await pool.query<SnapshotSummaryRow>(
+      `SELECT id, repository_url, branch, status, commit_sha, analyzed_at, profile->>'summary' AS profile_summary
+       FROM repository_snapshots
+       WHERE status = 'SNAPSHOT_CREATED'
+       ORDER BY created_at DESC
+       LIMIT $1`,
+      [limit],
+    );
+    return result.rows.map(toSnapshotSummary);
+  }
+
+  async saveRepositoryContext(snapshotId: string, context: RepositoryContext): Promise<void> {
+    await pool.query(
+      `UPDATE repository_snapshots
+       SET file_excerpts = $2::jsonb, omitted_file_count = $3
+       WHERE id = $1`,
+      [snapshotId, JSON.stringify(context.fileExcerpts), context.omittedFileCount],
+    );
+  }
+
+  async getRepositoryContext(snapshotId: string): Promise<RepositoryContext | undefined> {
+    const result = await pool.query<ContextRow>(
+      `SELECT file_tree, file_excerpts, omitted_file_count FROM repository_snapshots WHERE id = $1`,
+      [snapshotId],
+    );
+    const row = result.rows[0];
+    if (!row || row.file_excerpts === null) return undefined;
+    return {
+      fileTree: row.file_tree ?? [],
+      fileExcerpts: row.file_excerpts,
+      omittedFileCount: row.omitted_file_count ?? 0,
+    };
   }
 
   async saveScoringResult(result: ScoringResult): Promise<void> {

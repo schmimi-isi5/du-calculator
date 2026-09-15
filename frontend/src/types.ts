@@ -58,6 +58,17 @@ export interface RepositorySnapshot {
   errorMessage: string | null;
 }
 
+/** A row in the "already analyzed, pick me to reuse" list. */
+export interface RepositorySnapshotSummary {
+  id: string;
+  repositoryUrl: string;
+  branch: string;
+  status: RepositoryStatus;
+  commitSha: string | null;
+  analyzedAt: string | null;
+  profileSummary: string | null;
+}
+
 export interface Requirement {
   title: string;
   description: string;

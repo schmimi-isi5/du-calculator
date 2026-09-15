@@ -74,6 +74,21 @@ export interface RepositorySnapshot {
 }
 
 /**
+ * A row in the "already analyzed, pick me to reuse" list. Deliberately
+ * excludes the (large) file excerpts and full profile - the picker only
+ * needs enough to let someone recognize and choose a repository.
+ */
+export interface RepositorySnapshotSummary {
+  id: string;
+  repositoryUrl: string;
+  branch: string;
+  status: RepositoryStatus;
+  commitSha: string | null;
+  analyzedAt: string | null;
+  profileSummary: string | null;
+}
+
+/**
  * The filtered, budget-bounded view of a repository that is actually sent
  * to the AIProvider. Never the raw, unfiltered repository.
  */

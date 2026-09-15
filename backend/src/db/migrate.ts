@@ -20,6 +20,15 @@ CREATE TABLE IF NOT EXISTS repository_snapshots (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Added after the initial schema: the file excerpts a snapshot was
+-- analyzed with, so a repository can be reused for further requirements
+-- without re-cloning or re-running the AI analysis. ADD COLUMN IF NOT
+-- EXISTS keeps this idempotent for databases created before this change.
+ALTER TABLE repository_snapshots ADD COLUMN IF NOT EXISTS file_excerpts JSONB;
+ALTER TABLE repository_snapshots ADD COLUMN IF NOT EXISTS omitted_file_count INTEGER;
+
+CREATE INDEX IF NOT EXISTS idx_repository_snapshots_created_at ON repository_snapshots (created_at DESC);
+
 CREATE TABLE IF NOT EXISTS scoring_results (
   id UUID PRIMARY KEY,
   snapshot_id UUID NOT NULL REFERENCES repository_snapshots(id),

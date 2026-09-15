@@ -590,3 +590,73 @@ code.file-path {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+.repo-picker {
+  margin-bottom: 14px;
+}
+
+.repo-picker-toggle {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--teal);
+  font-weight: 800;
+  font-size: 12px;
+  padding: 8px 12px;
+  border-radius: 9px;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+}
+
+.repo-picker-body {
+  border: 1px solid var(--line);
+  border-top: 0;
+  border-radius: 0 0 9px 9px;
+  padding: 8px;
+}
+
+.repo-picker-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: 8px;
+}
+
+.repo-picker-row:hover {
+  background: #f8faf9;
+}
+
+.repo-picker-row.active {
+  background: var(--teal-tint);
+}
+
+.repo-picker-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.repo-picker-name {
+  font-size: 12px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.repo-picker-meta {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.repo-picker-summary {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}

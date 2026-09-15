@@ -5,7 +5,6 @@ import { config } from "../config.js";
 import type { DimensionScores, ImpactAnalysis, Requirement, ScoringResult } from "../domain/types.js";
 import { logger } from "../logging.js";
 import { computeDuResult } from "../scoring/duEngine.js";
-import { repositoryContextCache } from "../store/RepositoryContextCache.js";
 import { store } from "../store/PostgresScoringStore.js";
 import { asyncHandler } from "./asyncHandler.js";
 
@@ -32,11 +31,11 @@ requirementRouter.post("/score", asyncHandler(async (req, res) => {
     return;
   }
 
-  const context = repositoryContextCache.get(snapshotId);
+  const context = await store.getRepositoryContext(snapshotId);
   if (!context) {
     res
       .status(409)
-      .json({ error: "Repository context is no longer available in this session. Re-analyze the repository." });
+      .json({ error: "Repository context is not available for this snapshot. Re-analyze the repository." });
     return;
   }
 
