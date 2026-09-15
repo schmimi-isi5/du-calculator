@@ -17,6 +17,13 @@ export function RequirementContextPanel({ context, busy, onAnswerClarification, 
     <div className="card">
       <h2>Wissensstand zur Anforderung</h2>
 
+      {busy && (
+        <div className="notice progress">
+          Wird verarbeitet … Der Wissensstand wird von der KI neu bewertet, das kann bis zu ein bis zwei
+          Minuten dauern.
+        </div>
+      )}
+
       {pending.length > 0 && (
         <div className="context-section">
           <div className="context-section-title">Klärungsbedarf</div>
@@ -96,7 +103,7 @@ function ClarificationQuestion({
           disabled={busy || draft.trim().length === 0}
           onClick={() => onAnswer(draft.trim())}
         >
-          Antworten
+          {busy ? "Wird verarbeitet…" : "Antworten"}
         </button>
       </div>
     </div>
