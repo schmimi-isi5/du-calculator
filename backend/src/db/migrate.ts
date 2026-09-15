@@ -51,6 +51,11 @@ CREATE TABLE IF NOT EXISTS requirement_contexts (
 
 CREATE INDEX IF NOT EXISTS idx_requirement_contexts_snapshot_id ON requirement_contexts (snapshot_id);
 
+-- How many resolution rounds have run - once this reaches
+-- scoring/clarificationGate.ts MAX_RESOLUTION_ROUNDS, no further
+-- clarification question is ever asked for this context.
+ALTER TABLE requirement_contexts ADD COLUMN IF NOT EXISTS resolution_rounds INTEGER NOT NULL DEFAULT 0;
+
 CREATE TABLE IF NOT EXISTS scoring_results (
   id UUID PRIMARY KEY,
   snapshot_id UUID NOT NULL REFERENCES repository_snapshots(id),

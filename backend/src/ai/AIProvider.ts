@@ -15,12 +15,11 @@ import type {
   Assumption,
   Clarification,
   ContextResolutionOutput,
-  ImpactAnalysis,
   KnownFact,
   Requirement,
   RepositoryContext,
   RepositoryProfile,
-  ScoringOutput,
+  RequirementAssessment,
 } from "../domain/types.js";
 
 export interface RepositoryIdentity {
@@ -71,29 +70,23 @@ export interface AIProvider {
     usage: UsageContext,
   ): Promise<ContextResolutionOutput>;
 
-  /** Compares the requirement against the repository profile: what exists, what must change, what's new. */
-  analyzeRequirement(
-    requirement: Requirement,
-    profile: RepositoryProfile,
-    context: RepositoryContext,
-    knowledge: ResolvedRequirementKnowledge,
-    usage: UsageContext,
-  ): Promise<ImpactAnalysis>;
-
   /**
-   * Scores all eight dimensions (1-5 each) with a bilingual summary,
-   * bilingual detailed rationale, evidence, confidence, and the facts/
-   * assumptions each score relied on, plus one bilingual overall assessment
-   * synthesizing all eight. Never computes DU directly.
+   * Compares the requirement against the repository profile (what exists,
+   * what must change, what's new) and scores all eight dimensions (1-5
+   * each, with a bilingual summary, bilingual detailed rationale, evidence,
+   * confidence, and the facts/assumptions each score relied on) in one
+   * call, plus one bilingual overall assessment synthesizing all eight.
+   * Never computes DU directly. Merged into a single call - scoring always
+   * needed the impact analysis as input, so splitting it into two
+   * sequential AI calls only doubled latency without buying independence.
    */
-  scoreRequirement(
+  assessRequirement(
     requirement: Requirement,
     profile: RepositoryProfile,
-    impact: ImpactAnalysis,
     context: RepositoryContext,
     knowledge: ResolvedRequirementKnowledge,
     usage: UsageContext,
-  ): Promise<ScoringOutput>;
+  ): Promise<RequirementAssessment>;
 }
 
 export class AIProviderError extends Error {

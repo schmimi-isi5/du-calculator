@@ -160,6 +160,13 @@ export interface ScoringOutput {
   overallAssessment: LocalizedText;
 }
 
+/** Impact analysis and scoring produced together in one AI call - see AIProvider.assessRequirement. */
+export interface RequirementAssessment {
+  impactAnalysis: ImpactAnalysis;
+  dimensions: DimensionScores;
+  overallAssessment: LocalizedText;
+}
+
 export type DuClass = "XS" | "S" | "M" | "L" | "XL" | "XXL";
 
 export interface DuResult {
@@ -342,6 +349,8 @@ export interface RequirementContext {
   missingInformation: MissingInformation[];
   clarifications: Clarification[];
   status: RequirementContextStatus;
+  /** How many resolution rounds have run - see scoring/clarificationGate.ts MAX_RESOLUTION_ROUNDS. */
+  resolutionRounds: number;
   errorMessage: string | null;
   createdAt: string;
   updatedAt: string;

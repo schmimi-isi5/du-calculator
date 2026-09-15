@@ -71,6 +71,7 @@ interface RequirementContextRow extends QueryResultRow {
   missing_information: RequirementContext["missingInformation"] | null;
   clarifications: RequirementContext["clarifications"] | null;
   status: string;
+  resolution_rounds: number;
   error_message: string | null;
   created_at: Date;
   updated_at: Date;
@@ -148,6 +149,7 @@ function toRequirementContext(row: RequirementContextRow): RequirementContext {
     missingInformation: row.missing_information ?? [],
     clarifications: row.clarifications ?? [],
     status: row.status as RequirementContext["status"],
+    resolutionRounds: row.resolution_rounds,
     errorMessage: row.error_message,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
@@ -259,8 +261,8 @@ export class PostgresScoringStore implements ScoringStore {
     await pool.query(
       `INSERT INTO requirement_contexts
          (id, snapshot_id, requirement, normalization, known_facts, assumptions, missing_information,
-          clarifications, status, error_message, created_at, updated_at)
-       VALUES ($1, $2, $3::jsonb, $4::jsonb, $5::jsonb, $6::jsonb, $7::jsonb, $8::jsonb, $9, $10, $11, $12)
+          clarifications, status, resolution_rounds, error_message, created_at, updated_at)
+       VALUES ($1, $2, $3::jsonb, $4::jsonb, $5::jsonb, $6::jsonb, $7::jsonb, $8::jsonb, $9, $10, $11, $12, $13)
        ON CONFLICT (id) DO UPDATE SET
          normalization = EXCLUDED.normalization,
          known_facts = EXCLUDED.known_facts,
@@ -268,6 +270,7 @@ export class PostgresScoringStore implements ScoringStore {
          missing_information = EXCLUDED.missing_information,
          clarifications = EXCLUDED.clarifications,
          status = EXCLUDED.status,
+         resolution_rounds = EXCLUDED.resolution_rounds,
          error_message = EXCLUDED.error_message,
          updated_at = EXCLUDED.updated_at`,
       [
@@ -280,6 +283,7 @@ export class PostgresScoringStore implements ScoringStore {
         JSON.stringify(context.missingInformation),
         JSON.stringify(context.clarifications),
         context.status,
+        context.resolutionRounds,
         context.errorMessage,
         context.createdAt,
         context.updatedAt,
@@ -290,7 +294,7 @@ export class PostgresScoringStore implements ScoringStore {
   async getRequirementContext(id: string): Promise<RequirementContext | undefined> {
     const result = await pool.query<RequirementContextRow>(
       `SELECT id, snapshot_id, requirement, normalization, known_facts, assumptions, missing_information,
-              clarifications, status, error_message, created_at, updated_at
+              clarifications, status, resolution_rounds, error_message, created_at, updated_at
        FROM requirement_contexts WHERE id = $1`,
       [id],
     );

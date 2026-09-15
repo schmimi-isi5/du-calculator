@@ -52,6 +52,7 @@ async function resolveAndRespond(
         missingInformation: existing?.missingInformation ?? [],
         clarifications: existing?.clarifications ?? [],
         status: "ERROR",
+        resolutionRounds: existing?.resolutionRounds ?? 0,
         errorMessage: err.message,
         createdAt: existing?.createdAt ?? new Date().toISOString(),
         updatedAt: new Date().toISOString(),

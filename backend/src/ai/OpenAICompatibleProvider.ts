@@ -15,27 +15,24 @@ import { Agent, fetch as undiciFetch } from "undici";
 import type { ZodType } from "zod";
 import {
   ContextResolutionOutputSchema,
-  ImpactAnalysisSchema,
   RepositoryProfileSchema,
-  ScoringOutputSchema,
+  RequirementAssessmentSchema,
 } from "../domain/schemas.js";
 import type {
   AIProviderName,
   Clarification,
   ContextResolutionOutput,
-  ImpactAnalysis,
   Requirement,
   RepositoryContext,
   RepositoryProfile,
-  ScoringOutput,
+  RequirementAssessment,
 } from "../domain/types.js";
 import type { AIProvider, RepositoryIdentity, ResolvedRequirementKnowledge, UsageContext } from "./AIProvider.js";
 import { AIProviderError } from "./AIProvider.js";
 import {
+  buildAssessmentPrompt,
   buildContextResolutionPrompt,
-  buildImpactAnalysisPrompt,
   buildRepositoryAnalysisPrompt,
-  buildScoringPrompt,
   type PromptParts,
 } from "./prompts.js";
 import { toOpenAIStrictJsonSchema } from "./openAIStrictSchema.js";
@@ -119,37 +116,19 @@ export class OpenAICompatibleProvider implements AIProvider {
     );
   }
 
-  async analyzeRequirement(
+  async assessRequirement(
     requirement: Requirement,
     profile: RepositoryProfile,
     context: RepositoryContext,
     knowledge: ResolvedRequirementKnowledge,
     usageContext: UsageContext,
-  ): Promise<ImpactAnalysis> {
-    const prompt = buildImpactAnalysisPrompt(requirement, profile, context, knowledge);
-    return this.complete<ImpactAnalysis>(
+  ): Promise<RequirementAssessment> {
+    const prompt = buildAssessmentPrompt(requirement, profile, context, knowledge);
+    return this.complete<RequirementAssessment>(
       prompt,
-      ImpactAnalysisSchema,
-      "analyzeRequirement",
-      "ImpactAnalysis",
-      usageContext,
-    );
-  }
-
-  async scoreRequirement(
-    requirement: Requirement,
-    profile: RepositoryProfile,
-    impact: ImpactAnalysis,
-    context: RepositoryContext,
-    knowledge: ResolvedRequirementKnowledge,
-    usageContext: UsageContext,
-  ): Promise<ScoringOutput> {
-    const prompt = buildScoringPrompt(requirement, profile, impact, context, knowledge);
-    return this.complete<ScoringOutput>(
-      prompt,
-      ScoringOutputSchema,
-      "scoreRequirement",
-      "ScoringOutput",
+      RequirementAssessmentSchema,
+      "assessRequirement",
+      "RequirementAssessment",
       usageContext,
     );
   }

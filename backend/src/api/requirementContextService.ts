@@ -6,7 +6,7 @@
 
 import { getAIProvider } from "../ai/getAIProvider.js";
 import type { RepositorySnapshot, Requirement, RequirementContext } from "../domain/types.js";
-import { buildResolvedContextParts, hasPendingClarifications } from "../scoring/clarificationGate.js";
+import { buildResolvedContextParts, hasPendingClarifications, MAX_RESOLUTION_ROUNDS } from "../scoring/clarificationGate.js";
 import { store } from "../store/PostgresScoringStore.js";
 
 export class RequirementContextError extends Error {}
@@ -42,6 +42,11 @@ export async function runContextResolution(
   // so it can be attached to the usage log entry for this call - the app's
   // own id, not something derived from the AI's response.
   const contextId = existing?.id ?? store.createRequirementContextId();
+  const priorRounds = existing?.resolutionRounds ?? 0;
+  // Past MAX_RESOLUTION_ROUNDS, this round's AI call still runs (it may
+  // resolve everything itself), but no new clarification question is ever
+  // surfaced from it - see clarificationGate.ts buildResolvedContextParts.
+  const allowNewClarifications = priorRounds < MAX_RESOLUTION_ROUNDS;
 
   const aiProvider = getAIProvider();
   const output = await aiProvider.resolveRequirementContext(
@@ -52,7 +57,7 @@ export async function runContextResolution(
     { snapshotId, requirementContextId: contextId },
   );
 
-  const parts = buildResolvedContextParts(output, priorClarifications);
+  const parts = buildResolvedContextParts(output, priorClarifications, allowNewClarifications);
 
   const context: RequirementContext = {
     id: contextId,
@@ -64,6 +69,7 @@ export async function runContextResolution(
     missingInformation: parts.missingInformation,
     clarifications: parts.clarifications,
     status: hasPendingClarifications(parts) ? "AWAITING_CLARIFICATION" : "RESOLVED",
+    resolutionRounds: priorRounds + 1,
     errorMessage: null,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,

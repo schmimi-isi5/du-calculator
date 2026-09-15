@@ -80,37 +80,23 @@ requirementRouter.post("/score", asyncHandler(async (req, res) => {
     const availableAssumptionIds = new Set(activeAssumptions(requirementContext.assumptions).map((a) => a.id));
     const usageContext = { snapshotId, requirementContextId: contextId, scoringId: result.id };
 
-    const impactAnalysis = await aiProvider.analyzeRequirement(
-      requirement,
-      snapshot.profile,
-      context,
-      knowledge,
-      usageContext,
-    );
-    const scoringOutput = await aiProvider.scoreRequirement(
-      requirement,
-      snapshot.profile,
-      impactAnalysis,
-      context,
-      knowledge,
-      usageContext,
-    );
-    const engineResult = computeDuResult(scoringOutput.dimensions, config.pricePerDU);
+    const assessment = await aiProvider.assessRequirement(requirement, snapshot.profile, context, knowledge, usageContext);
+    const engineResult = computeDuResult(assessment.dimensions, config.pricePerDU);
 
     // Only assumptions that are actually still active may count - a score
     // that cites a rejected assumption's id is a modeling bug, not a valid
     // "assumption used".
     const assumptionsUsed = Array.from(
       new Set(
-        Object.values(scoringOutput.dimensions)
+        Object.values(assessment.dimensions)
           .flatMap((d) => d.assumptionsUsed)
           .filter((id) => availableAssumptionIds.has(id)),
       ),
     );
 
-    result.impactAnalysis = impactAnalysis;
-    result.dimensionScores = scoringOutput.dimensions;
-    result.overallAssessment = scoringOutput.overallAssessment;
+    result.impactAnalysis = assessment.impactAnalysis;
+    result.dimensionScores = assessment.dimensions;
+    result.overallAssessment = assessment.overallAssessment;
     result.assumptionsUsed = assumptionsUsed;
     result.confidence = {
       overallConfidence: engineResult.overallConfidence,
@@ -121,7 +107,7 @@ requirementRouter.post("/score", asyncHandler(async (req, res) => {
 
     if (result.status === "NEEDS_CLARIFICATION") {
       result.duResult = null;
-      result.openQuestions = collectOpenQuestions(impactAnalysis, scoringOutput.dimensions);
+      result.openQuestions = collectOpenQuestions(assessment.impactAnalysis, assessment.dimensions);
     } else {
       result.duResult = engineResult;
     }

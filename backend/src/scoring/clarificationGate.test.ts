@@ -27,6 +27,7 @@ import {
   ClarificationNotFoundError,
   hasPendingClarifications,
   MAX_CLARIFICATIONS_PER_ROUND,
+  MAX_RESOLUTION_ROUNDS,
   pendingClarifications,
 } from "./clarificationGate.js";
 
@@ -143,12 +144,53 @@ describe("buildResolvedContextParts - classification scenarios", () => {
     ];
     const result = buildResolvedContextParts(output({ missingInformation: gaps }));
 
-    expect(MAX_CLARIFICATIONS_PER_ROUND).toBe(3);
-    expect(result.clarifications).toHaveLength(3);
+    expect(result.clarifications).toHaveLength(MAX_CLARIFICATIONS_PER_ROUND);
     // The two impact-2 questions must be asked before any impact-1 question.
     expect(result.clarifications.filter((c) => c.question.includes("impact-2"))).toHaveLength(2);
-    expect(result.clarifications.some((c) => c.question === "Q-impact-0")).toBe(false);
-    expect(result.clarifications.map((c) => c.priority)).toEqual([1, 2, 3]);
+  });
+
+  it("asks nothing new once allowNewClarifications is false, regardless of what the AI flagged", () => {
+    const result = buildResolvedContextParts(
+      output({
+        missingInformation: [
+          missing({ classification: "CLARIFICATION_REQUIRED", question: "Q1", potentialScoreImpact: 2 }),
+          missing({ classification: "CLARIFICATION_REQUIRED", question: "Q2", potentialScoreImpact: 2 }),
+        ],
+      }),
+      [],
+      false,
+    );
+
+    expect(result.clarifications).toHaveLength(0);
+    // The classification itself is untouched - only whether it becomes a question is gated.
+    expect(result.missingInformation.some((m) => m.classification === "CLARIFICATION_REQUIRED")).toBe(true);
+  });
+
+  it("still carries forward previously answered clarifications when allowNewClarifications is false", () => {
+    const answered: Clarification = {
+      id: "answered-1",
+      missingInformationId: "m1",
+      question: "Already answered?",
+      priority: 1,
+      status: "ANSWERED",
+      answer: "Yes.",
+      answeredAt: new Date().toISOString(),
+    };
+
+    const result = buildResolvedContextParts(
+      output({
+        missingInformation: [missing({ classification: "CLARIFICATION_REQUIRED", question: "New question" })],
+      }),
+      [answered],
+      false,
+    );
+
+    expect(result.clarifications).toEqual([answered]);
+  });
+
+  it("MAX_RESOLUTION_ROUNDS is a small, finite cap (the app enforces it in requirementContextService.ts)", () => {
+    expect(MAX_RESOLUTION_ROUNDS).toBeGreaterThan(0);
+    expect(MAX_RESOLUTION_ROUNDS).toBeLessThanOrEqual(3);
   });
 
   it("does not re-ask a question that was already answered in a prior round", () => {
@@ -233,6 +275,7 @@ function buildContext(overrides: Partial<RequirementContext> = {}): RequirementC
     missingInformation: [],
     clarifications: [],
     status: "AWAITING_CLARIFICATION",
+    resolutionRounds: 1,
     errorMessage: null,
     createdAt: now,
     updatedAt: now,

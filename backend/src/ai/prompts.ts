@@ -2,13 +2,7 @@
 // call so the instructions can be reviewed and tuned without touching
 // request/response plumbing.
 
-import type {
-  Clarification,
-  ImpactAnalysis,
-  Requirement,
-  RepositoryContext,
-  RepositoryProfile,
-} from "../domain/types.js";
+import type { Clarification, Requirement, RepositoryContext, RepositoryProfile } from "../domain/types.js";
 import type { RepositoryIdentity, ResolvedRequirementKnowledge } from "./AIProvider.js";
 
 const EVIDENCE_RULES = `
@@ -250,49 +244,6 @@ Resolve this requirement's context now.`;
   return { system, stableContext, volatile };
 }
 
-export function buildImpactAnalysisPrompt(
-  requirement: Requirement,
-  profile: RepositoryProfile,
-  context: RepositoryContext,
-  knowledge: ResolvedRequirementKnowledge,
-): PromptParts {
-  const system = `You are a senior software architect performing a Requirement Impact Analysis for the ISIFIVE DU Calculator. You compare a new customer requirement against a repository you have already profiled, and determine what already exists, what can be reused, what must be modified, and what must be newly created.
-
-${EVIDENCE_RULES}
-
-${REUSE_RULE}
-
-Known facts and documented assumptions for this requirement are provided below - build on them rather than re-deriving them, and do not raise questions about things they already resolve. List concrete risks and open questions only where the requirement is still ambiguous or the repository context does not resolve how it should be implemented.
-
-The repository profile and file contents are provided first, below, as reference material - the requirement and what's already known about it follow after it.`;
-
-  // Stable across a re-score of the same requirement against the same
-  // snapshot (see scoring/clarificationGate.ts - a user can confirm/reject
-  // an assumption and re-score without re-cloning or re-profiling).
-  const stableContext = `REPOSITORY PROFILE (already analyzed):
-${JSON.stringify(profile, null, 2)}
-
-${formatRepositoryContext(context)}`;
-
-  const volatile = `REQUIREMENT
-Title: ${requirement.title}
-
-Description:
-${requirement.description}
-
-Acceptance Criteria:
-${requirement.acceptanceCriteria.map((c) => `- ${c}`).join("\n") || "(none provided)"}
-
-Constraints:
-${requirement.constraints.map((c) => `- ${c}`).join("\n") || "(none provided)"}
-
-${formatKnowledge(knowledge)}
-
-Analyze the impact of this requirement against the actual repository above.`;
-
-  return { system, stableContext, volatile };
-}
-
 const DIMENSION_DESCRIPTIONS = `
 1. functionalScope (weight 20%): how much new user-facing/business functionality must be delivered.
 2. technicalComplexity (weight 20%): architectural and implementation difficulty of the change itself.
@@ -319,14 +270,20 @@ Assumption-aware scoring:
 - List anything still genuinely uncertain after applying facts and assumptions in unresolvedRisks.
 `.trim();
 
-export function buildScoringPrompt(
+/**
+ * Impact analysis and per-dimension scoring in one call. These used to be
+ * two sequential AI calls, but scoring always took the impact analysis as
+ * input rather than being independent of it - the split only doubled
+ * latency (a full extra thinking + generation pass) without buying any
+ * actual independence, so both are asked for together here.
+ */
+export function buildAssessmentPrompt(
   requirement: Requirement,
   profile: RepositoryProfile,
-  impact: ImpactAnalysis,
   context: RepositoryContext,
   knowledge: ResolvedRequirementKnowledge,
 ): PromptParts {
-  const system = `You are scoring a customer requirement across eight fixed dimensions for the ISIFIVE DU Calculator. You NEVER decide a final Development Unit count or price - that is computed deterministically by the application from your per-dimension scores. Your only job is to score each dimension 1 (very low) to 5 (very high), with a summary, a detailed rationale, evidence, a confidence (0.0-1.0), and any missing information that limits your confidence - plus one overall assessment synthesizing all eight dimensions.
+  const system = `You are a senior software architect performing a Requirement Impact Analysis and DU scoring for the ISIFIVE DU Calculator, in one pass. First determine what already exists, what can be reused, what must be modified, and what must be newly created for this requirement against a repository you have already profiled. Then, using that same analysis, score each of the eight fixed dimensions 1 (very low) to 5 (very high), with a summary, a detailed rationale, evidence, a confidence (0.0-1.0), and any missing information that limits your confidence - plus one overall assessment synthesizing all eight dimensions. You NEVER decide a final Development Unit count or price - that is computed deterministically by the application from your per-dimension scores.
 
 ${DIMENSION_DESCRIPTIONS}
 
@@ -338,11 +295,14 @@ ${BILINGUAL_RULE}
 
 ${ASSUMPTION_AWARE_SCORING_RULE}
 
-If you lack information to score a dimension confidently, say so explicitly in missingInformation and lower that dimension's confidence accordingly - do not compensate by guessing a score you cannot support.
+Known facts and documented assumptions for this requirement are provided below - build on them rather than re-deriving them, and do not raise questions about things they already resolve. If you lack information to score a dimension confidently, say so explicitly in missingInformation and lower that dimension's confidence accordingly - do not compensate by guessing a score you cannot support.
 
-The repository profile and file contents are provided first, below, as reference material - the requirement, what's known about it, and the impact analysis to score follow after it.`;
+The repository profile and file contents are provided first, below, as reference material - the requirement and what's already known about it follow after it.`;
 
-  const stableContext = `REPOSITORY PROFILE:
+  // Stable across a re-score of the same requirement against the same
+  // snapshot (see scoring/clarificationGate.ts - a user can confirm/reject
+  // an assumption and re-score without re-cloning or re-profiling).
+  const stableContext = `REPOSITORY PROFILE (already analyzed):
 ${JSON.stringify(profile, null, 2)}
 
 ${formatRepositoryContext(context)}`;
@@ -361,10 +321,7 @@ ${requirement.constraints.map((c) => `- ${c}`).join("\n") || "(none provided)"}
 
 ${formatKnowledge(knowledge)}
 
-IMPACT ANALYSIS:
-${JSON.stringify(impact, null, 2)}
-
-Score all eight dimensions now.`;
+Analyze the impact of this requirement against the actual repository above, then score all eight dimensions now.`;
 
   return { system, stableContext, volatile };
 }

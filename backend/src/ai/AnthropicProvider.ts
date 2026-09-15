@@ -7,32 +7,43 @@ import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import {
   ContextResolutionOutputSchema,
-  ImpactAnalysisSchema,
   RepositoryProfileSchema,
-  ScoringOutputSchema,
+  RequirementAssessmentSchema,
 } from "../domain/schemas.js";
 import type {
   Clarification,
   ContextResolutionOutput,
-  ImpactAnalysis,
   Requirement,
   RepositoryContext,
   RepositoryProfile,
-  ScoringOutput,
+  RequirementAssessment,
 } from "../domain/types.js";
 import type { AIProvider, RepositoryIdentity, ResolvedRequirementKnowledge, UsageContext } from "./AIProvider.js";
 import { AIProviderError } from "./AIProvider.js";
 import {
+  buildAssessmentPrompt,
   buildContextResolutionPrompt,
-  buildImpactAnalysisPrompt,
   buildRepositoryAnalysisPrompt,
-  buildScoringPrompt,
   type PromptParts,
 } from "./prompts.js";
 import { recordUsage } from "./usageTracker.js";
 
 const DEFAULT_MODEL = "claude-opus-5";
 const MAX_TOKENS = 16000;
+
+type EffortLevel = "low" | "medium" | "high" | "xhigh" | "max";
+
+// Repository analysis and requirement-context resolution are classification/
+// extraction-shaped work, where Anthropic's own measured effort curves are
+// close to flat - "medium" holds accuracy at meaningfully lower latency and
+// cost. Scoring keeps "high": it is the one step where nuanced, defensible
+// judgment across eight weighted dimensions directly determines the DU
+// result, so it's the wrong place to trade quality for speed.
+const EFFORT_BY_STEP: Record<string, EffortLevel> = {
+  analyzeRepository: "medium",
+  resolveRequirementContext: "medium",
+  assessRequirement: "high",
+};
 
 // Every call re-sends the repository profile + file excerpts (often tens of
 // thousands of tokens) unchanged across a clarification round's repeated
@@ -76,27 +87,15 @@ export class AnthropicProvider implements AIProvider {
     );
   }
 
-  async analyzeRequirement(
+  async assessRequirement(
     requirement: Requirement,
     profile: RepositoryProfile,
     context: RepositoryContext,
     knowledge: ResolvedRequirementKnowledge,
     usage: UsageContext,
-  ): Promise<ImpactAnalysis> {
-    const prompt = buildImpactAnalysisPrompt(requirement, profile, context, knowledge);
-    return this.parse<ImpactAnalysis>(prompt, ImpactAnalysisSchema, "analyzeRequirement", usage);
-  }
-
-  async scoreRequirement(
-    requirement: Requirement,
-    profile: RepositoryProfile,
-    impact: ImpactAnalysis,
-    context: RepositoryContext,
-    knowledge: ResolvedRequirementKnowledge,
-    usage: UsageContext,
-  ): Promise<ScoringOutput> {
-    const prompt = buildScoringPrompt(requirement, profile, impact, context, knowledge);
-    return this.parse<ScoringOutput>(prompt, ScoringOutputSchema, "scoreRequirement", usage);
+  ): Promise<RequirementAssessment> {
+    const prompt = buildAssessmentPrompt(requirement, profile, context, knowledge);
+    return this.parse<RequirementAssessment>(prompt, RequirementAssessmentSchema, "assessRequirement", usage);
   }
 
   private async parse<T>(
@@ -119,7 +118,7 @@ export class AnthropicProvider implements AIProvider {
         model: this.model,
         max_tokens: MAX_TOKENS,
         thinking: { type: "adaptive" },
-        output_config: { effort: "high" },
+        output_config: { effort: EFFORT_BY_STEP[step] ?? "high" },
         output_format: betaZodOutputFormat(schema),
         system: [{ type: "text", text: prompt.system, cache_control: { type: "ephemeral", ttl: CACHE_TTL } }],
         messages: [
