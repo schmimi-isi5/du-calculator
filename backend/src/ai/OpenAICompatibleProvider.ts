@@ -11,6 +11,7 @@
 // against each provider as a smoke test, not an assumption.
 
 import OpenAI from "openai";
+import { Agent, fetch as undiciFetch } from "undici";
 import type { ZodType } from "zod";
 import {
   ContextResolutionOutputSchema,
@@ -49,13 +50,39 @@ export interface OpenAICompatibleProviderOptions {
   model: string;
 }
 
+// Matches nginx's proxy_read_timeout (frontend/nginx.conf) so the whole
+// chain agrees on how long a slow provider - in practice, an unaccelerated
+// local model doing schema-constrained generation over a large repository
+// context - is allowed to take.
+const REQUEST_TIMEOUT_MS = 900_000;
+
 export class OpenAICompatibleProvider implements AIProvider {
   private readonly client: OpenAI;
   private readonly providerName: OpenAICompatibleProviderOptions["providerName"];
   private readonly model: string;
 
   constructor(options: OpenAICompatibleProviderOptions) {
-    this.client = new OpenAI({ apiKey: options.apiKey, baseURL: options.baseURL });
+    // Node's global fetch enforces its own independent response-header and
+    // body-inactivity timeouts (undici default: 5 minutes) regardless of the
+    // `timeout` option below - confirmed live: a request to a slow local
+    // model failed with undici's HeadersTimeoutError well under the 900s
+    // nginx allows. The SDK's own docs (OpenAI client options) name this
+    // exact fix: pass a matching `fetch` bound to an Agent whose
+    // headersTimeout/bodyTimeout is at least as long as `timeout`.
+    this.client = new OpenAI({
+      apiKey: options.apiKey,
+      baseURL: options.baseURL,
+      timeout: REQUEST_TIMEOUT_MS,
+      // undici's Request/Response types don't structurally match the DOM
+      // lib types this SDK's `Fetch` type expects (e.g. missing `bytes`/
+      // `textStream` on Request) - the cast is safe because undici's fetch
+      // is the actual runtime implementation behind Node's global fetch;
+      // this only swaps in a differently-configured instance of it.
+      fetch: undiciFetch as unknown as typeof fetch,
+      fetchOptions: {
+        dispatcher: new Agent({ headersTimeout: REQUEST_TIMEOUT_MS, bodyTimeout: REQUEST_TIMEOUT_MS }),
+      },
+    });
     this.providerName = options.providerName;
     this.model = options.model;
   }
