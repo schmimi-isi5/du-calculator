@@ -8,6 +8,7 @@ import { InvalidRepositoryInputError, validateRepositoryInput } from "../git/val
 import { logger } from "../logging.js";
 import { store } from "../store/PostgresScoringStore.js";
 import { asyncHandler } from "./asyncHandler.js";
+import { errorCause } from "./errorCause.js";
 
 export const repositoryRouter = Router();
 
@@ -79,6 +80,7 @@ repositoryRouter.post("/analyze", asyncHandler(async (req, res) => {
       repositoryUrl,
       branch,
       error: snapshot.errorMessage,
+      cause: errorCause(err),
     });
     await store.saveSnapshot(snapshot);
     res.status(200).json(snapshot);
