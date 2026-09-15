@@ -6,12 +6,48 @@
 
 import { randomUUID } from "node:crypto";
 import type { QueryResultRow } from "pg";
-import type { AIUsageBreakdownEntry, AIUsageRecord, AIUsageSummary } from "../domain/types.js";
+import type { AIUsageBreakdownEntry, AIUsageLogEntry, AIUsageRecord, AIUsageSummary } from "../domain/types.js";
 import { pool } from "../db/pool.js";
 
 export interface UsageDateRange {
   from: Date;
   to: Date;
+}
+
+interface LogRow extends QueryResultRow {
+  id: string;
+  provider: string;
+  model: string;
+  operation: string;
+  input_tokens: string;
+  output_tokens: string;
+  cache_creation_input_tokens: string;
+  cache_read_input_tokens: string;
+  cost_usd: string | null;
+  snapshot_id: string | null;
+  requirement_context_id: string | null;
+  scoring_id: string | null;
+  created_at: Date;
+  label: string | null;
+}
+
+function toLogEntry(row: LogRow): AIUsageLogEntry {
+  return {
+    id: row.id,
+    provider: row.provider as AIUsageLogEntry["provider"],
+    model: row.model,
+    operation: row.operation,
+    inputTokens: Number(row.input_tokens),
+    outputTokens: Number(row.output_tokens),
+    cacheCreationInputTokens: Number(row.cache_creation_input_tokens),
+    cacheReadInputTokens: Number(row.cache_read_input_tokens),
+    costUsd: row.cost_usd !== null ? Number(row.cost_usd) : null,
+    snapshotId: row.snapshot_id,
+    requirementContextId: row.requirement_context_id,
+    scoringId: row.scoring_id,
+    createdAt: row.created_at.toISOString(),
+    label: row.label,
+  };
 }
 
 interface SummaryRow extends QueryResultRow {
@@ -49,6 +85,8 @@ function toBreakdownEntry(row: BreakdownRow): AIUsageBreakdownEntry {
 export interface AIUsageStore {
   recordUsage(record: Omit<AIUsageRecord, "id" | "createdAt">): Promise<void>;
   getUsageSummary(range: UsageDateRange): Promise<AIUsageSummary>;
+  /** Individual call records, newest first, with a human-readable label resolved from the requirement/repository each call belongs to. */
+  listUsageLog(range: UsageDateRange, limit: number): Promise<AIUsageLogEntry[]>;
 }
 
 export class PostgresAIUsageStore implements AIUsageStore {
@@ -56,8 +94,9 @@ export class PostgresAIUsageStore implements AIUsageStore {
     await pool.query(
       `INSERT INTO ai_usage_log
          (id, provider, model, operation, input_tokens, output_tokens,
-          cache_creation_input_tokens, cache_read_input_tokens, cost_usd)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          cache_creation_input_tokens, cache_read_input_tokens, cost_usd,
+          snapshot_id, requirement_context_id, scoring_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
       [
         randomUUID(),
         record.provider,
@@ -68,6 +107,9 @@ export class PostgresAIUsageStore implements AIUsageStore {
         record.cacheCreationInputTokens,
         record.cacheReadInputTokens,
         record.costUsd,
+        record.snapshotId,
+        record.requirementContextId,
+        record.scoringId,
       ],
     );
   }
@@ -132,6 +174,29 @@ export class PostgresAIUsageStore implements AIUsageStore {
       byModel: byModelResult.rows.map(toBreakdownEntry),
       byOperation: byOperationResult.rows.map(toBreakdownEntry),
     };
+  }
+
+  async listUsageLog({ from, to }: UsageDateRange, limit: number): Promise<AIUsageLogEntry[]> {
+    // Label priority: the scoring result's requirement title (most specific -
+    // this call was part of scoring a requirement), else the requirement
+    // context's title (resolving/clarifying, before scoring exists), else
+    // just the repository URL (repository analysis, no requirement yet).
+    const result = await pool.query<LogRow>(
+      `SELECT
+         u.id, u.provider, u.model, u.operation, u.input_tokens, u.output_tokens,
+         u.cache_creation_input_tokens, u.cache_read_input_tokens, u.cost_usd,
+         u.snapshot_id, u.requirement_context_id, u.scoring_id, u.created_at,
+         COALESCE(sr.requirement->>'title', rc.requirement->>'title', rs.repository_url) AS label
+       FROM ai_usage_log u
+       LEFT JOIN scoring_results sr ON sr.id = u.scoring_id
+       LEFT JOIN requirement_contexts rc ON rc.id = u.requirement_context_id
+       LEFT JOIN repository_snapshots rs ON rs.id = u.snapshot_id
+       WHERE u.created_at >= $1 AND u.created_at < $2
+       ORDER BY u.created_at DESC
+       LIMIT $3`,
+      [from, to, limit],
+    );
+    return result.rows.map(toLogEntry);
   }
 }
 

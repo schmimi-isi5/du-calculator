@@ -95,6 +95,18 @@ CREATE TABLE IF NOT EXISTS ai_usage_log (
 );
 
 CREATE INDEX IF NOT EXISTS idx_ai_usage_log_created_at ON ai_usage_log (created_at DESC);
+
+-- Which requirement/repository each call was for, so the detailed usage log
+-- (GET /api/ai-usage/log) can show "which call cost how much for which
+-- assessment" instead of just aggregate totals. No FK constraint - this is
+-- operational telemetry, deliberately decoupled from the core domain tables'
+-- own lifecycle.
+ALTER TABLE ai_usage_log ADD COLUMN IF NOT EXISTS snapshot_id UUID;
+ALTER TABLE ai_usage_log ADD COLUMN IF NOT EXISTS requirement_context_id UUID;
+ALTER TABLE ai_usage_log ADD COLUMN IF NOT EXISTS scoring_id UUID;
+
+CREATE INDEX IF NOT EXISTS idx_ai_usage_log_snapshot_id ON ai_usage_log (snapshot_id);
+CREATE INDEX IF NOT EXISTS idx_ai_usage_log_requirement_context_id ON ai_usage_log (requirement_context_id);
 `;
 
 export async function runMigrations(): Promise<void> {

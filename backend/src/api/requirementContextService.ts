@@ -38,6 +38,10 @@ export async function runContextResolution(
   const now = new Date().toISOString();
   const priorClarifications = existing?.clarifications ?? [];
   const answered = priorClarifications.filter((c) => c.status === "ANSWERED");
+  // Computed before the AI call (not after, as the returned context used to)
+  // so it can be attached to the usage log entry for this call - the app's
+  // own id, not something derived from the AI's response.
+  const contextId = existing?.id ?? store.createRequirementContextId();
 
   const aiProvider = getAIProvider();
   const output = await aiProvider.resolveRequirementContext(
@@ -45,12 +49,13 @@ export async function runContextResolution(
     snapshot.profile as NonNullable<RepositorySnapshot["profile"]>,
     repositoryContext,
     answered,
+    { snapshotId, requirementContextId: contextId },
   );
 
   const parts = buildResolvedContextParts(output, priorClarifications);
 
   const context: RequirementContext = {
-    id: existing?.id ?? store.createRequirementContextId(),
+    id: contextId,
     snapshotId,
     requirement,
     normalization: output.normalization,

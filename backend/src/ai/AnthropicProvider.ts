@@ -20,7 +20,7 @@ import type {
   RepositoryProfile,
   ScoringOutput,
 } from "../domain/types.js";
-import type { AIProvider, RepositoryIdentity, ResolvedRequirementKnowledge } from "./AIProvider.js";
+import type { AIProvider, RepositoryIdentity, ResolvedRequirementKnowledge, UsageContext } from "./AIProvider.js";
 import { AIProviderError } from "./AIProvider.js";
 import {
   buildContextResolutionPrompt,
@@ -54,9 +54,10 @@ export class AnthropicProvider implements AIProvider {
   async analyzeRepository(
     repository: RepositoryIdentity,
     context: RepositoryContext,
+    usage: UsageContext,
   ): Promise<RepositoryProfile> {
     const prompt = buildRepositoryAnalysisPrompt(repository, context);
-    return this.parse<RepositoryProfile>(prompt, RepositoryProfileSchema, "analyzeRepository");
+    return this.parse<RepositoryProfile>(prompt, RepositoryProfileSchema, "analyzeRepository", usage);
   }
 
   async resolveRequirementContext(
@@ -64,12 +65,14 @@ export class AnthropicProvider implements AIProvider {
     profile: RepositoryProfile,
     context: RepositoryContext,
     answeredClarifications: Clarification[],
+    usage: UsageContext,
   ): Promise<ContextResolutionOutput> {
     const prompt = buildContextResolutionPrompt(requirement, profile, context, answeredClarifications);
     return this.parse<ContextResolutionOutput>(
       prompt,
       ContextResolutionOutputSchema,
       "resolveRequirementContext",
+      usage,
     );
   }
 
@@ -78,9 +81,10 @@ export class AnthropicProvider implements AIProvider {
     profile: RepositoryProfile,
     context: RepositoryContext,
     knowledge: ResolvedRequirementKnowledge,
+    usage: UsageContext,
   ): Promise<ImpactAnalysis> {
     const prompt = buildImpactAnalysisPrompt(requirement, profile, context, knowledge);
-    return this.parse<ImpactAnalysis>(prompt, ImpactAnalysisSchema, "analyzeRequirement");
+    return this.parse<ImpactAnalysis>(prompt, ImpactAnalysisSchema, "analyzeRequirement", usage);
   }
 
   async scoreRequirement(
@@ -89,15 +93,17 @@ export class AnthropicProvider implements AIProvider {
     impact: ImpactAnalysis,
     context: RepositoryContext,
     knowledge: ResolvedRequirementKnowledge,
+    usage: UsageContext,
   ): Promise<ScoringOutput> {
     const prompt = buildScoringPrompt(requirement, profile, impact, context, knowledge);
-    return this.parse<ScoringOutput>(prompt, ScoringOutputSchema, "scoreRequirement");
+    return this.parse<ScoringOutput>(prompt, ScoringOutputSchema, "scoreRequirement", usage);
   }
 
   private async parse<T>(
     prompt: PromptParts,
     schema: Parameters<typeof betaZodOutputFormat>[0],
     step: string,
+    usage: UsageContext,
   ): Promise<T> {
     try {
       // `thinking.type: "adaptive"`, `output_config.effort`, and the
@@ -128,13 +134,19 @@ export class AnthropicProvider implements AIProvider {
       } as never);
 
       if (response.usage) {
-        await recordUsage("anthropic", response.model ?? this.model, step, {
-          inputTokens: response.usage.input_tokens,
-          outputTokens: response.usage.output_tokens,
-          cacheWrite5mTokens: response.usage.cache_creation?.ephemeral_5m_input_tokens ?? 0,
-          cacheWrite1hTokens: response.usage.cache_creation?.ephemeral_1h_input_tokens ?? 0,
-          cacheReadTokens: response.usage.cache_read_input_tokens ?? 0,
-        });
+        await recordUsage(
+          "anthropic",
+          response.model ?? this.model,
+          step,
+          {
+            inputTokens: response.usage.input_tokens,
+            outputTokens: response.usage.output_tokens,
+            cacheWrite5mTokens: response.usage.cache_creation?.ephemeral_5m_input_tokens ?? 0,
+            cacheWrite1hTokens: response.usage.cache_creation?.ephemeral_1h_input_tokens ?? 0,
+            cacheReadTokens: response.usage.cache_read_input_tokens ?? 0,
+          },
+          usage,
+        );
       }
 
       if (response.stop_reason === "refusal") {

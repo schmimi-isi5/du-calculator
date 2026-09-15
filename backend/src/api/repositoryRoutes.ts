@@ -59,6 +59,7 @@ repositoryRouter.post("/analyze", asyncHandler(async (req, res) => {
     const profile = await aiProvider.analyzeRepository(
       { repositoryUrl, branch, commitSha },
       context,
+      { snapshotId: snapshot.id },
     );
 
     snapshot.fileTree = context.fileTree;

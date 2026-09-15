@@ -1,5 +1,6 @@
 import type {
   AIUsageConfig,
+  AIUsageLogEntry,
   AIUsageSummary,
   AssumptionAction,
   Requirement,
@@ -127,4 +128,9 @@ export function getAIUsageSummary(from: Date, to: Date): Promise<AIUsageSummary>
 
 export function getAIUsageConfig(): Promise<AIUsageConfig> {
   return getJson<AIUsageConfig>("/api/ai-usage/config");
+}
+
+export function getAIUsageLog(from: Date, to: Date, limit = 500): Promise<AIUsageLogEntry[]> {
+  const params = new URLSearchParams({ from: from.toISOString(), to: to.toISOString(), limit: String(limit) });
+  return getJson<AIUsageLogEntry[]>(`/api/ai-usage/log?${params.toString()}`);
 }

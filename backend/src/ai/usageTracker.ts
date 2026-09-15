@@ -3,6 +3,7 @@
 // so pricing/logging logic lives in exactly one place.
 
 import type { AIProviderName } from "../domain/types.js";
+import type { UsageContext } from "./AIProvider.js";
 import { aiUsageStore } from "../store/AIUsageStore.js";
 import { config } from "../config.js";
 import { estimateCostUsd, type UsageTokens } from "./pricing.js";
@@ -13,6 +14,7 @@ export async function recordUsage(
   model: string,
   operation: string,
   tokens: UsageTokens,
+  usage: UsageContext,
 ): Promise<void> {
   const customPricing =
     config.aiCustomInputPricePerMTok !== null && config.aiCustomOutputPricePerMTok !== null
@@ -31,6 +33,9 @@ export async function recordUsage(
       cacheCreationInputTokens: tokens.cacheWrite5mTokens + tokens.cacheWrite1hTokens,
       cacheReadInputTokens: tokens.cacheReadTokens,
       costUsd,
+      snapshotId: usage.snapshotId,
+      requirementContextId: usage.requirementContextId ?? null,
+      scoringId: usage.scoringId ?? null,
     });
   } catch (err) {
     // Usage logging must never break the actual AI call it's observing -
