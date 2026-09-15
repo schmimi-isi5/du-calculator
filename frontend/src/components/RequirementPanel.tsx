@@ -69,6 +69,13 @@ export function RequirementPanel({
           </span>
         )}
       </div>
+
+      {loading && (
+        <div className="notice progress" style={{ marginTop: 10 }}>
+          Wird verarbeitet … Die KI prüft die Anforderung gegen das Repository, klassifiziert bekannte
+          Fakten und Annahmen und ermittelt offene Fragen. Das kann bis zu ein bis zwei Minuten dauern.
+        </div>
+      )}
     </div>
   );
 }
