@@ -8,6 +8,7 @@ import { activeAssumptions } from "../scoring/clarificationGate.js";
 import { computeDuResult, determineScoringStatus } from "../scoring/duEngine.js";
 import { store } from "../store/PostgresScoringStore.js";
 import { asyncHandler } from "./asyncHandler.js";
+import { errorCause } from "./errorCause.js";
 
 export const requirementRouter = Router();
 
@@ -119,7 +120,12 @@ requirementRouter.post("/score", asyncHandler(async (req, res) => {
   } catch (err) {
     result.status = "ERROR";
     result.errorMessage = describeError(err);
-    logger.error("Requirement scoring failed", { scoringId: result.id, contextId, error: result.errorMessage });
+    logger.error("Requirement scoring failed", {
+      scoringId: result.id,
+      contextId,
+      error: result.errorMessage,
+      cause: errorCause(err),
+    });
   }
 
   await store.saveScoringResult(result);

@@ -12,6 +12,7 @@ import {
 } from "../scoring/clarificationGate.js";
 import { store } from "../store/PostgresScoringStore.js";
 import { asyncHandler } from "./asyncHandler.js";
+import { errorCause } from "./errorCause.js";
 import { parseRequirement } from "./requirementInput.js";
 import { RequirementContextError, runContextResolution } from "./requirementContextService.js";
 
@@ -36,7 +37,11 @@ async function resolveAndRespond(
       return;
     }
     if (err instanceof AIProviderError) {
-      logger.error("Requirement context resolution failed", { snapshotId, error: err.message });
+      logger.error("Requirement context resolution failed", {
+        snapshotId,
+        error: err.message,
+        cause: errorCause(err),
+      });
       res.status(200).json({
         id: existing?.id ?? store.createRequirementContextId(),
         snapshotId,
