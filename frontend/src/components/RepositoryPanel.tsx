@@ -4,22 +4,26 @@ import { REPOSITORY_STATUS_META } from "../statusMeta";
 interface Props {
   repositoryUrl: string;
   branch: string;
+  accessToken: string;
   loading: boolean;
   requestError: string | null;
   snapshot: RepositorySnapshot | null;
   onChangeRepositoryUrl: (value: string) => void;
   onChangeBranch: (value: string) => void;
+  onChangeAccessToken: (value: string) => void;
   onAnalyze: () => void;
 }
 
 export function RepositoryPanel({
   repositoryUrl,
   branch,
+  accessToken,
   loading,
   requestError,
   snapshot,
   onChangeRepositoryUrl,
   onChangeBranch,
+  onChangeAccessToken,
   onAnalyze,
 }: Props) {
   const statusMeta = REPOSITORY_STATUS_META[snapshot?.status ?? "NOT_ANALYZED"];
@@ -47,6 +51,16 @@ export function RepositoryPanel({
           />
         </div>
       </div>
+
+      <label htmlFor="accessToken">Access Token (optional, für private Repositories)</label>
+      <input
+        id="accessToken"
+        type="password"
+        autoComplete="off"
+        value={accessToken}
+        onChange={(e) => onChangeAccessToken(e.target.value)}
+        placeholder="ghp_… (wird nur für diesen einen Clone-Vorgang verwendet, nie gespeichert)"
+      />
 
       <div className="actions">
         <button className="btn secondary" onClick={onAnalyze} disabled={loading}>

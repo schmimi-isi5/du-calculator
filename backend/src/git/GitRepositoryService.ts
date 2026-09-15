@@ -8,6 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { simpleGit } from "simple-git";
 import { config } from "../config.js";
+import { buildAuthenticatedCloneUrl } from "./validateRepositoryInput.js";
 
 export type GitOperationStage = "CLONE" | "INSPECT" | "TOO_LARGE";
 
@@ -34,18 +35,28 @@ export interface RepositoryReadResult {
  * fresh temp directory and reads back the real commit SHA and tracked file
  * list. Throws GitOperationError on any failure; always cleans up the temp
  * directory itself on failure (the caller only owns cleanup on success).
+ *
+ * When accessToken is supplied (for private repositories), it is embedded
+ * only in the URL passed to the `git clone` process - never in error
+ * messages, logs, or the returned result, all of which reference the
+ * original, credential-free repositoryUrl. Note: since the token is passed
+ * as a CLI argument, it is visible for the (brief) lifetime of the clone
+ * process to anything with access to this container's process list
+ * (e.g. /proc) - an accepted, documented tradeoff for this MVP.
  */
 export async function cloneAndReadRepository(
   repositoryUrl: string,
   branch: string,
+  accessToken?: string,
 ): Promise<RepositoryReadResult> {
   const workingDir = await fs.mkdtemp(path.join(os.tmpdir(), `du-calc-${randomUUID()}-`));
+  const cloneUrl = accessToken ? buildAuthenticatedCloneUrl(repositoryUrl, accessToken) : repositoryUrl;
 
   try {
     const git = simpleGit({ timeout: { block: config.gitCloneTimeoutMs } });
 
     try {
-      await git.clone(repositoryUrl, workingDir, [
+      await git.clone(cloneUrl, workingDir, [
         "--depth",
         "1",
         "--branch",
@@ -54,13 +65,28 @@ export async function cloneAndReadRepository(
       ]);
     } catch (cause) {
       throw new GitOperationError(
-        `Could not clone branch "${branch}" from ${repositoryUrl}. Check that the URL and branch are correct and the repository is publicly reachable.`,
+        `Could not clone branch "${branch}" from ${repositoryUrl}. Check that the URL and branch are correct` +
+          (accessToken
+            ? " and the access token has read access to this repository."
+            : " and the repository is publicly reachable, or provide an access token for a private repository."),
         "CLONE",
         cause,
       );
     }
 
     const repoGit = simpleGit(workingDir);
+
+    if (accessToken) {
+      // The token is otherwise left sitting in this clone's .git/config on
+      // disk until cleanup runs - scrub it immediately rather than relying
+      // solely on cleanup timing.
+      try {
+        await repoGit.remote(["set-url", "origin", repositoryUrl]);
+      } catch {
+        // Non-fatal: the working directory is temporary and always removed
+        // by cleanupWorkingDir regardless of whether this scrub succeeds.
+      }
+    }
 
     let commitSha: string;
     try {

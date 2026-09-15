@@ -23,6 +23,7 @@ export default function App() {
 
   const [repositoryUrl, setRepositoryUrl] = useState("");
   const [branch, setBranch] = useState("main");
+  const [accessToken, setAccessToken] = useState("");
   const [snapshot, setSnapshot] = useState<RepositorySnapshot | null>(null);
   const [repoLoading, setRepoLoading] = useState(false);
   const [repoRequestError, setRepoRequestError] = useState<string | null>(null);
@@ -47,7 +48,7 @@ export default function App() {
     setSnapshot(null);
     setScoringResult(null);
     try {
-      const result = await analyzeRepository(repositoryUrl, branch);
+      const result = await analyzeRepository(repositoryUrl, branch, accessToken);
       setSnapshot(result);
       if (result.status === "SNAPSHOT_CREATED") {
         setRepoPickerRefreshToken((token) => token + 1);
@@ -167,11 +168,13 @@ export default function App() {
               <RepositoryPanel
                 repositoryUrl={repositoryUrl}
                 branch={branch}
+                accessToken={accessToken}
                 loading={repoLoading}
                 requestError={repoRequestError}
                 snapshot={snapshot}
                 onChangeRepositoryUrl={setRepositoryUrl}
                 onChangeBranch={setBranch}
+                onChangeAccessToken={setAccessToken}
                 onAnalyze={handleAnalyze}
               />
 

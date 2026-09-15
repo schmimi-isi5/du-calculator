@@ -51,8 +51,16 @@ async function getJson<T>(path: string): Promise<T> {
   return handleResponse<T>(response);
 }
 
-export function analyzeRepository(repositoryUrl: string, branch: string): Promise<RepositorySnapshot> {
-  return postJson<RepositorySnapshot>("/api/repository/analyze", { repositoryUrl, branch });
+export function analyzeRepository(
+  repositoryUrl: string,
+  branch: string,
+  accessToken?: string,
+): Promise<RepositorySnapshot> {
+  return postJson<RepositorySnapshot>("/api/repository/analyze", {
+    repositoryUrl,
+    branch,
+    accessToken: accessToken || undefined,
+  });
 }
 
 export function listRepositorySnapshots(): Promise<RepositorySnapshotSummary[]> {
