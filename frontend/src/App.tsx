@@ -3,9 +3,12 @@ import { analyzeRepository, ApiError, getRepositorySnapshot, getScoringResult, s
 import { HistoryPanel } from "./components/HistoryPanel";
 import { RepositoryPanel } from "./components/RepositoryPanel";
 import { RepositoryPicker } from "./components/RepositoryPicker";
+import { RepositorySummaryBar } from "./components/RepositorySummaryBar";
 import { RequirementPanel } from "./components/RequirementPanel";
 import { ResultHero } from "./components/ResultHero";
 import { ScoringPanel } from "./components/ScoringPanel";
+import type { WizardStep } from "./components/WizardSteps";
+import { WizardSteps } from "./components/WizardSteps";
 import type { RepositorySnapshot, ScoringResult, UiLanguage } from "./types";
 
 function linesToList(value: string): string[] {
@@ -20,6 +23,7 @@ type Tab = "new" | "history";
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>("new");
   const [language, setLanguage] = useState<UiLanguage>("de");
+  const [wizardStep, setWizardStep] = useState<WizardStep>(1);
 
   const [repositoryUrl, setRepositoryUrl] = useState("");
   const [branch, setBranch] = useState("main");
@@ -41,6 +45,9 @@ export default function App() {
   const [historyResult, setHistoryResult] = useState<ScoringResult | null>(null);
   const [historyDetailLoading, setHistoryDetailLoading] = useState(false);
   const [historyDetailError, setHistoryDetailError] = useState<string | null>(null);
+
+  const isRepositoryReady = snapshot?.status === "SNAPSHOT_CREATED";
+  const maxReachableStep: WizardStep = scoringLoading || scoringResult ? 3 : isRepositoryReady ? 2 : 1;
 
   async function handleAnalyze() {
     setRepoLoading(true);
@@ -76,8 +83,15 @@ export default function App() {
     }
   }
 
+  function handleChangeRepository() {
+    setSnapshot(null);
+    setScoringResult(null);
+    setWizardStep(1);
+  }
+
   async function handleScore() {
     if (!snapshot || snapshot.status !== "SNAPSHOT_CREATED") return;
+    setWizardStep(3);
     setScoringLoading(true);
     setScoringResult(null);
     try {
@@ -130,8 +144,7 @@ export default function App() {
     }
   }
 
-  const canSubmitRequirement =
-    snapshot?.status === "SNAPSHOT_CREATED" && title.trim().length > 0 && description.trim().length > 0;
+  const canSubmitRequirement = isRepositoryReady && title.trim().length > 0 && description.trim().length > 0;
 
   return (
     <>
@@ -157,53 +170,85 @@ export default function App() {
         </div>
 
         {activeTab === "new" && (
-          <div className="grid">
-            <section>
-              <RepositoryPicker
-                activeSnapshotId={snapshot?.id ?? null}
-                onUse={handleUseExistingRepository}
-                refreshToken={repoPickerRefreshToken}
-              />
+          <>
+            <WizardSteps currentStep={wizardStep} maxReachableStep={maxReachableStep} onStepClick={setWizardStep} />
 
-              <RepositoryPanel
-                repositoryUrl={repositoryUrl}
-                branch={branch}
-                accessToken={accessToken}
-                loading={repoLoading}
-                requestError={repoRequestError}
-                snapshot={snapshot}
-                onChangeRepositoryUrl={setRepositoryUrl}
-                onChangeBranch={setBranch}
-                onChangeAccessToken={setAccessToken}
-                onAnalyze={handleAnalyze}
-              />
+            {wizardStep === 1 && (
+              <div className="wizard-single-column">
+                <RepositoryPicker
+                  activeSnapshotId={snapshot?.id ?? null}
+                  onUse={handleUseExistingRepository}
+                  refreshToken={repoPickerRefreshToken}
+                />
 
-              <RequirementPanel
-                title={title}
-                description={description}
-                acceptanceCriteria={acceptanceCriteria}
-                constraints={constraints}
-                canSubmit={canSubmitRequirement}
-                loading={scoringLoading}
-                onChangeTitle={setTitle}
-                onChangeDescription={setDescription}
-                onChangeAcceptanceCriteria={setAcceptanceCriteria}
-                onChangeConstraints={setConstraints}
-                onSubmit={handleScore}
-              />
+                <RepositoryPanel
+                  repositoryUrl={repositoryUrl}
+                  branch={branch}
+                  accessToken={accessToken}
+                  loading={repoLoading}
+                  requestError={repoRequestError}
+                  snapshot={snapshot}
+                  onChangeRepositoryUrl={setRepositoryUrl}
+                  onChangeBranch={setBranch}
+                  onChangeAccessToken={setAccessToken}
+                  onAnalyze={handleAnalyze}
+                />
 
-              <ScoringPanel
-                loading={scoringLoading}
-                result={scoringResult}
-                language={language}
-                onChangeLanguage={setLanguage}
-              />
-            </section>
+                {isRepositoryReady && (
+                  <div className="wizard-next">
+                    <button className="btn primary" onClick={() => setWizardStep(2)}>
+                      Weiter: Anforderung stellen →
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
-            <aside>
-              <ResultHero result={scoringResult} />
-            </aside>
-          </div>
+            {wizardStep === 2 && snapshot && (
+              <div className="wizard-single-column">
+                <RepositorySummaryBar snapshot={snapshot} onChangeRepository={handleChangeRepository} />
+
+                <RequirementPanel
+                  title={title}
+                  description={description}
+                  acceptanceCriteria={acceptanceCriteria}
+                  constraints={constraints}
+                  canSubmit={canSubmitRequirement}
+                  loading={scoringLoading}
+                  onChangeTitle={setTitle}
+                  onChangeDescription={setDescription}
+                  onChangeAcceptanceCriteria={setAcceptanceCriteria}
+                  onChangeConstraints={setConstraints}
+                  onSubmit={handleScore}
+                />
+              </div>
+            )}
+
+            {wizardStep === 3 && snapshot && (
+              <div className="grid">
+                <section>
+                  <RepositorySummaryBar snapshot={snapshot} onChangeRepository={handleChangeRepository} />
+
+                  <div className="wizard-back">
+                    <button className="btn secondary" onClick={() => setWizardStep(2)}>
+                      ← Zurück zur Anforderung
+                    </button>
+                  </div>
+
+                  <ScoringPanel
+                    loading={scoringLoading}
+                    result={scoringResult}
+                    language={language}
+                    onChangeLanguage={setLanguage}
+                  />
+                </section>
+
+                <aside>
+                  <ResultHero result={scoringResult} />
+                </aside>
+              </div>
+            )}
+          </>
         )}
 
         {activeTab === "history" && (
