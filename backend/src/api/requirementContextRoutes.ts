@@ -101,18 +101,44 @@ requirementContextRouter.get(
   }),
 );
 
-requirementContextRouter.post(
-  "/:id/clarifications/:clarificationId/answer",
-  asyncHandler(async (req, res) => {
-    const { id, clarificationId } = req.params;
-    const { answer } = req.body ?? {};
+interface ClarificationAnswerInput {
+  clarificationId: string;
+  answer: string;
+}
 
-    if (!id || !clarificationId) {
-      res.status(400).json({ error: "id and clarificationId are required." });
+function parseAnswers(body: unknown): ClarificationAnswerInput[] | null {
+  const answers = (body as { answers?: unknown } | undefined)?.answers;
+  if (!Array.isArray(answers) || answers.length === 0) return null;
+
+  const parsed: ClarificationAnswerInput[] = [];
+  for (const entry of answers) {
+    const clarificationId = (entry as { clarificationId?: unknown })?.clarificationId;
+    const answer = (entry as { answer?: unknown })?.answer;
+    if (typeof clarificationId !== "string" || clarificationId.length === 0) return null;
+    if (typeof answer !== "string" || answer.trim().length === 0) return null;
+    parsed.push({ clarificationId, answer: answer.trim() });
+  }
+  return parsed;
+}
+
+// Answers one or more pending clarifications from the same round together,
+// so a round with e.g. 3 open questions triggers exactly one re-resolution
+// call instead of up to three sequential ones - and so answering one
+// question can never appear to discard drafts still being typed for another
+// pending question in the same round (see spec: "Dialog statt
+// Fragenkatalog" - a round is answered as a unit).
+requirementContextRouter.post(
+  "/:id/clarifications/answer",
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    if (!id) {
+      res.status(400).json({ error: "id is required." });
       return;
     }
-    if (typeof answer !== "string" || answer.trim().length === 0) {
-      res.status(400).json({ error: "answer is required." });
+
+    const answers = parseAnswers(req.body);
+    if (!answers) {
+      res.status(400).json({ error: "answers must be a non-empty array of { clarificationId, answer }." });
       return;
     }
 
@@ -122,9 +148,11 @@ requirementContextRouter.post(
       return;
     }
 
-    let updated;
+    let updated = context;
     try {
-      updated = applyClarificationAnswer(context, clarificationId, answer.trim());
+      for (const { clarificationId, answer } of answers) {
+        updated = applyClarificationAnswer(updated, clarificationId, answer);
+      }
     } catch (err) {
       if (err instanceof ClarificationNotFoundError) {
         res.status(404).json({ error: err.message });
@@ -132,7 +160,7 @@ requirementContextRouter.post(
       }
       throw err;
     }
-    // Persist the answer immediately so it is never lost even if the
+    // Persist the answers immediately so they are never lost even if the
     // subsequent re-resolution call fails.
     await store.saveRequirementContext(updated);
 
