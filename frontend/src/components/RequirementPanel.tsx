@@ -1,5 +1,7 @@
+import { useEffect, useState } from "react";
+import { ApiError, getSelectableModels } from "../api/client";
 import { QUALITY_LEVEL_META, QUALITY_LEVEL_ORDER } from "../types";
-import type { QualityLevel } from "../types";
+import type { QualityLevel, SelectableModel } from "../types";
 
 interface Props {
   title: string;
@@ -7,6 +9,7 @@ interface Props {
   acceptanceCriteria: string;
   constraints: string;
   qualityLevel: QualityLevel;
+  model: string | null;
   canSubmit: boolean;
   loading: boolean;
   onChangeTitle: (v: string) => void;
@@ -14,6 +17,7 @@ interface Props {
   onChangeAcceptanceCriteria: (v: string) => void;
   onChangeConstraints: (v: string) => void;
   onChangeQualityLevel: (v: QualityLevel) => void;
+  onChangeModel: (v: string) => void;
   onSubmit: () => void;
 }
 
@@ -23,6 +27,7 @@ export function RequirementPanel({
   acceptanceCriteria,
   constraints,
   qualityLevel,
+  model,
   canSubmit,
   loading,
   onChangeTitle,
@@ -30,8 +35,33 @@ export function RequirementPanel({
   onChangeAcceptanceCriteria,
   onChangeConstraints,
   onChangeQualityLevel,
+  onChangeModel,
   onSubmit,
 }: Props) {
+  const [selectableModels, setSelectableModels] = useState<SelectableModel[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getSelectableModels()
+      .then((response) => {
+        if (cancelled) return;
+        setSelectableModels(response.models);
+        onChangeModel(response.default);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          // Non-fatal: the picker simply stays hidden and the backend falls
+          // back to its own default model.
+          console.error(err instanceof ApiError ? err.message : "Modelle konnten nicht geladen werden.");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+    // Fetches once on mount only - a user's own model pick must never be
+    // silently overwritten by re-running this default-selection effect.
+  }, []);
+
   return (
     <div className="card">
       <h2>Anforderung erfassen</h2>
@@ -84,6 +114,26 @@ export function RequirementPanel({
           );
         })}
       </div>
+
+      {selectableModels.length > 1 && (
+        <>
+          <label htmlFor="modelPicker">KI-Modell</label>
+          <div className="quality-level-picker" id="modelPicker">
+            {selectableModels.map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                className={`quality-level-option ${model === m.id ? "active" : ""}`}
+                onClick={() => onChangeModel(m.id)}
+                disabled={loading}
+              >
+                <span className="quality-level-option-label">{m.label}</span>
+                <span className="quality-level-option-description">{m.description}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
 
       <div className="actions">
         <button className="btn primary" onClick={onSubmit} disabled={!canSubmit || loading}>

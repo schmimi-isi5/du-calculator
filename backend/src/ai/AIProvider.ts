@@ -69,6 +69,7 @@ export interface AIProvider {
     context: RepositoryContext,
     answeredClarifications: Clarification[],
     qualityLevel: QualityLevel,
+    model: string,
     usage: UsageContext,
   ): Promise<ContextResolutionOutput>;
 
@@ -88,6 +89,7 @@ export interface AIProvider {
     context: RepositoryContext,
     knowledge: ResolvedRequirementKnowledge,
     qualityLevel: QualityLevel,
+    model: string,
     usage: UsageContext,
   ): Promise<RequirementAssessment>;
 }

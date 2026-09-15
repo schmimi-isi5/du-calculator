@@ -102,6 +102,19 @@ export const QUALITY_LEVEL_META: Record<QualityLevel, QualityLevelMeta> = {
 
 export const QUALITY_LEVEL_ORDER: QualityLevel[] = ["quick", "standard", "thorough"];
 
+/** One AI model a run may pick, as offered by the currently active provider - see backend/src/domain/models.ts. */
+export interface SelectableModel {
+  id: string;
+  label: string;
+  description: string;
+}
+
+export interface SelectableModelsResponse {
+  provider: AIProviderName;
+  models: SelectableModel[];
+  default: string;
+}
+
 export interface ImpactAnalysis {
   existing: string[];
   reusable: string[];
@@ -163,6 +176,7 @@ export interface ScoringResult {
   requirementContextId: string | null;
   requirement: Requirement;
   qualityLevel: QualityLevel;
+  model: string;
   status: ScoringStatus;
   impactAnalysis: ImpactAnalysis | null;
   dimensionScores: DimensionScores | null;
@@ -251,6 +265,7 @@ export interface RequirementContext {
   snapshotId: string;
   requirement: Requirement;
   qualityLevel: QualityLevel;
+  model: string;
   normalization: RequirementNormalization | null;
   knownFacts: KnownFact[];
   assumptions: Assumption[];

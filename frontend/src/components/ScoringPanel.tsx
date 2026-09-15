@@ -27,6 +27,7 @@ export function ScoringPanel({ loading, result, language, onChangeLanguage }: Pr
       </div>
       <span className={`status-pill ${statusMeta.variant}`}>{statusMeta.label}</span>
       {result && <span className="tag" style={{ marginLeft: 8 }}>{QUALITY_LEVEL_META[result.qualityLevel].label}</span>}
+      {result && <span className="tag" style={{ marginLeft: 8 }}>{result.model}</span>}
 
       {!result && !loading && (
         <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 10 }}>

@@ -5,12 +5,24 @@
 // "run resolution, then persist" only happens in one place.
 
 import { getAIProvider } from "../ai/getAIProvider.js";
+import { config } from "../config.js";
+import { DEFAULT_ANTHROPIC_MODEL } from "../domain/models.js";
 import { DEFAULT_QUALITY_LEVEL, QUALITY_PROFILES } from "../domain/qualityLevels.js";
 import type { QualityLevel, RepositorySnapshot, Requirement, RequirementContext } from "../domain/types.js";
 import { buildResolvedContextParts, hasPendingClarifications } from "../scoring/clarificationGate.js";
 import { store } from "../store/PostgresScoringStore.js";
 
 export class RequirementContextError extends Error {}
+
+/** The model a run falls back to when none was explicitly chosen - the operator-configured AI_MODEL, or the default for the active provider. */
+export function defaultModelForActiveProvider(): string {
+  if (config.aiModel) return config.aiModel;
+  if (config.aiProvider === "anthropic") return DEFAULT_ANTHROPIC_MODEL;
+  // getAIProvider() already refuses to construct openai/openrouter/local
+  // without AI_MODEL set, so this branch is unreachable once a provider is
+  // actually in use - it only matters before the first AI call ever runs.
+  return DEFAULT_ANTHROPIC_MODEL;
+}
 
 /**
  * Runs one round of context resolution: calls the AI to (re-)classify
@@ -19,9 +31,9 @@ export class RequirementContextError extends Error {}
  * resolution, after a clarification answer, and after an assumption is
  * rejected (all three can surface a fresh or updated set of questions).
  *
- * `qualityLevel` only matters on the very first call (existing === null) -
- * it is fixed on the RequirementContext from then on and every later round
- * reuses it, so a run never drifts between depths partway through (see
+ * `qualityLevel`/`model` only matter on the very first call (existing ===
+ * null) - both are fixed on the RequirementContext from then on and every
+ * later round reuses them, so a run never drifts partway through (see
  * domain/types.ts QualityLevel).
  */
 export async function runContextResolution(
@@ -29,6 +41,7 @@ export async function runContextResolution(
   requirement: Requirement,
   existing: RequirementContext | null,
   qualityLevel: QualityLevel = DEFAULT_QUALITY_LEVEL,
+  model: string = defaultModelForActiveProvider(),
 ): Promise<RequirementContext> {
   const snapshot = await store.getSnapshot(snapshotId);
   if (!snapshot || snapshot.status !== "SNAPSHOT_CREATED" || !snapshot.profile) {
@@ -43,6 +56,7 @@ export async function runContextResolution(
   }
 
   const effectiveQualityLevel = existing?.qualityLevel ?? qualityLevel;
+  const effectiveModel = existing?.model ?? model;
   const profile = QUALITY_PROFILES[effectiveQualityLevel];
 
   const now = new Date().toISOString();
@@ -66,6 +80,7 @@ export async function runContextResolution(
     repositoryContext,
     answered,
     effectiveQualityLevel,
+    effectiveModel,
     { snapshotId, requirementContextId: contextId },
   );
 
@@ -76,6 +91,7 @@ export async function runContextResolution(
     snapshotId,
     requirement,
     qualityLevel: effectiveQualityLevel,
+    model: effectiveModel,
     normalization: output.normalization,
     knownFacts: parts.knownFacts,
     assumptions: mergeAssumptionDecisions(parts.assumptions, existing?.assumptions ?? []),

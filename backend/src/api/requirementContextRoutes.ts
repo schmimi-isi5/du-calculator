@@ -1,6 +1,8 @@
 import type { Response } from "express";
 import { Router } from "express";
 import { AIProviderError } from "../ai/AIProvider.js";
+import { config } from "../config.js";
+import { ANTHROPIC_SELECTABLE_MODELS, isSelectableAnthropicModel } from "../domain/models.js";
 import { DEFAULT_QUALITY_LEVEL, isQualityLevel } from "../domain/qualityLevels.js";
 import type { QualityLevel, Requirement, RequirementContext } from "../domain/types.js";
 import { logger } from "../logging.js";
@@ -15,7 +17,7 @@ import { store } from "../store/PostgresScoringStore.js";
 import { asyncHandler } from "./asyncHandler.js";
 import { errorCause } from "./errorCause.js";
 import { parseRequirement } from "./requirementInput.js";
-import { RequirementContextError, runContextResolution } from "./requirementContextService.js";
+import { defaultModelForActiveProvider, RequirementContextError, runContextResolution } from "./requirementContextService.js";
 
 export const requirementContextRouter = Router();
 
@@ -29,9 +31,10 @@ async function resolveAndRespond(
   requirement: Requirement,
   existing: RequirementContext | null,
   qualityLevel: QualityLevel = DEFAULT_QUALITY_LEVEL,
+  model: string = defaultModelForActiveProvider(),
 ) {
   try {
-    const context = await runContextResolution(snapshotId, requirement, existing, qualityLevel);
+    const context = await runContextResolution(snapshotId, requirement, existing, qualityLevel, model);
     res.status(200).json(context);
   } catch (err) {
     if (err instanceof RequirementContextError) {
@@ -49,6 +52,7 @@ async function resolveAndRespond(
         snapshotId,
         requirement,
         qualityLevel: existing?.qualityLevel ?? qualityLevel,
+        model: existing?.model ?? model,
         normalization: existing?.normalization ?? null,
         knownFacts: existing?.knownFacts ?? [],
         assumptions: existing?.assumptions ?? [],
@@ -69,7 +73,8 @@ async function resolveAndRespond(
 requirementContextRouter.post(
   "/",
   asyncHandler(async (req, res) => {
-    const { snapshotId, requirement: requirementInput, qualityLevel: qualityLevelInput } = req.body ?? {};
+    const { snapshotId, requirement: requirementInput, qualityLevel: qualityLevelInput, model: modelInput } =
+      req.body ?? {};
 
     if (typeof snapshotId !== "string" || snapshotId.length === 0) {
       res.status(400).json({ error: "snapshotId is required." });
@@ -93,7 +98,26 @@ requirementContextRouter.post(
       qualityLevel = qualityLevelInput;
     }
 
-    await resolveAndRespond(res, snapshotId, requirement, null, qualityLevel);
+    // Only "anthropic" has a curated, client-selectable model list (see
+    // domain/models.ts) - other providers run exactly one operator-
+    // configured model, so a client-provided override is rejected rather
+    // than silently ignored (it would otherwise look accepted but do nothing).
+    let model = defaultModelForActiveProvider();
+    if (modelInput !== undefined) {
+      if (config.aiProvider !== "anthropic") {
+        res.status(400).json({ error: `model cannot be chosen per request when AI_PROVIDER is "${config.aiProvider}".` });
+        return;
+      }
+      if (!isSelectableAnthropicModel(modelInput)) {
+        res.status(400).json({
+          error: `model must be one of: ${ANTHROPIC_SELECTABLE_MODELS.map((m) => m.id).join(", ")}.`,
+        });
+        return;
+      }
+      model = modelInput;
+    }
+
+    await resolveAndRespond(res, snapshotId, requirement, null, qualityLevel, model);
   }),
 );
 

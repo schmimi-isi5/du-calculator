@@ -191,6 +191,8 @@ export interface ScoringResult {
   requirement: Requirement;
   /** Which quality level (see QualityLevel) this run was scored at - part of the audit trail for "why was this X DU". */
   qualityLevel: QualityLevel;
+  /** Which model actually produced this assessment - see domain/models.ts. */
+  model: string;
   status: ScoringStatus;
   impactAnalysis: ImpactAnalysis | null;
   dimensionScores: DimensionScores | null;
@@ -355,6 +357,8 @@ export interface RequirementContext {
   snapshotId: string;
   requirement: Requirement;
   qualityLevel: QualityLevel;
+  /** Which model this context is resolved with - see domain/models.ts. Fixed once chosen, same as qualityLevel. */
+  model: string;
   normalization: RequirementNormalization | null;
   knownFacts: KnownFact[];
   assumptions: Assumption[];

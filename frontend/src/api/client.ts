@@ -10,6 +10,7 @@ import type {
   RequirementContext,
   ScoringHistoryEntry,
   ScoringResult,
+  SelectableModelsResponse,
 } from "../types";
 
 export class ApiError extends Error {}
@@ -81,8 +82,9 @@ export function resolveRequirementContext(
   snapshotId: string,
   requirement: Requirement,
   qualityLevel: QualityLevel,
+  model?: string,
 ): Promise<RequirementContext> {
-  return postJson<RequirementContext>("/api/requirement-context", { snapshotId, requirement, qualityLevel });
+  return postJson<RequirementContext>("/api/requirement-context", { snapshotId, requirement, qualityLevel, model });
 }
 
 export function getRequirementContext(id: string): Promise<RequirementContext> {
@@ -130,6 +132,10 @@ export function getAIUsageSummary(from: Date, to: Date): Promise<AIUsageSummary>
 
 export function getAIUsageConfig(): Promise<AIUsageConfig> {
   return getJson<AIUsageConfig>("/api/ai-usage/config");
+}
+
+export function getSelectableModels(): Promise<SelectableModelsResponse> {
+  return getJson<SelectableModelsResponse>("/api/ai-usage/models");
 }
 
 export function getAIUsageLog(from: Date, to: Date, limit = 500): Promise<AIUsageLogEntry[]> {

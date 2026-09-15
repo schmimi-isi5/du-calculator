@@ -59,6 +59,7 @@ requirementRouter.post("/score", asyncHandler(async (req, res) => {
     requirementContextId: contextId,
     requirement,
     qualityLevel: requirementContext.qualityLevel,
+    model: requirementContext.model,
     status: "ANALYZING",
     impactAnalysis: null,
     dimensionScores: null,
@@ -87,6 +88,7 @@ requirementRouter.post("/score", asyncHandler(async (req, res) => {
       context,
       knowledge,
       requirementContext.qualityLevel,
+      requirementContext.model,
       usageContext,
     );
     const engineResult = computeDuResult(assessment.dimensions, config.pricePerDU);

@@ -1,8 +1,10 @@
 import type { Response } from "express";
 import { Router } from "express";
 import { config } from "../config.js";
+import { selectableModelsFor } from "../domain/models.js";
 import { aiUsageStore } from "../store/AIUsageStore.js";
 import { asyncHandler } from "./asyncHandler.js";
+import { defaultModelForActiveProvider } from "./requirementContextService.js";
 
 export const aiUsageRouter = Router();
 
@@ -58,5 +60,14 @@ aiUsageRouter.get("/config", (_req, res) => {
   res.status(200).json({
     provider: config.aiProvider,
     model: config.aiModel ?? "(provider default)",
+  });
+});
+
+aiUsageRouter.get("/models", (_req, res) => {
+  const defaultModel = defaultModelForActiveProvider();
+  res.status(200).json({
+    provider: config.aiProvider,
+    models: selectableModelsFor(config.aiProvider, defaultModel),
+    default: defaultModel,
   });
 });
