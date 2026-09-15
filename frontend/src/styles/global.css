@@ -211,6 +211,11 @@ textarea {
   color: var(--danger);
 }
 
+.notice.progress {
+  background: var(--teal-tint);
+  color: var(--teal);
+}
+
 .repo-result {
   background: var(--teal-tint);
   padding: 12px;
