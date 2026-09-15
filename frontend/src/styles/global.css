@@ -21,6 +21,9 @@ body {
   background: var(--bg);
   color: var(--ink);
   font-family: "Museo Sans", "Segoe UI", Arial, sans-serif;
+  /* Safety net: AI-generated text, file paths, or long URLs must never be
+     able to force horizontal scrolling on the page. */
+  overflow-wrap: anywhere;
 }
 
 header.app-header {
@@ -72,6 +75,13 @@ main {
 @media (max-width: 900px) {
   .grid {
     grid-template-columns: 1fr;
+  }
+
+  /* The hero sits below the main content in this single-column layout, so
+     sticking it to the viewport would make it overlap whatever is
+     scrolling past it instead of following the two-column reading order. */
+  .hero {
+    position: static;
   }
 }
 
@@ -377,7 +387,7 @@ textarea {
 
 .dim-top {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 10px;
   align-items: center;
 }
@@ -385,6 +395,7 @@ textarea {
 .dim-name {
   font-size: 13px;
   font-weight: 900;
+  min-width: 0;
 }
 
 .dim-weight {
@@ -548,12 +559,14 @@ code.file-path {
   padding: 1px 5px;
   border-radius: 4px;
   font-size: 11px;
+  overflow-wrap: anywhere;
 }
 
 .tabs {
   display: flex;
   gap: 8px;
   margin-bottom: 16px;
+  flex-wrap: wrap;
 }
 
 .tabs button {
@@ -789,19 +802,27 @@ code.file-path {
   border-radius: 12px;
   padding: 12px 16px;
   margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.repo-summary-info {
+  /* Without this, a flex child won't shrink below its text's natural
+     width, so a long repo name/URL would push the "wechseln" button out
+     of the card instead of truncating. */
+  min-width: 0;
+  flex: 1 1 220px;
 }
 
 .repo-summary-name {
   font-size: 13px;
   font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .repo-summary-meta {
   font-size: 11px;
   color: var(--muted);
   margin-top: 2px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 60vw;
 }

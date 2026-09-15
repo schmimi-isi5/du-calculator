@@ -15,7 +15,7 @@ export function ScoringPanel({ loading, result, language, onChangeLanguage }: Pr
   return (
     <div className="card">
       <div className="actions" style={{ marginTop: 0, justifyContent: "space-between" }}>
-        <h2 style={{ margin: 0 }}>3 · AI Scoring</h2>
+        <h2 style={{ margin: 0 }}>Bewertung</h2>
         <div className="lang-toggle">
           <button className={language === "de" ? "active" : ""} onClick={() => onChangeLanguage("de")}>
             DE
