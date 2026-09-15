@@ -230,6 +230,7 @@ export interface RequirementContext {
   missingInformation: MissingInformation[];
   clarifications: Clarification[];
   status: RequirementContextStatus;
+  resolutionRounds: number;
   errorMessage: string | null;
   createdAt: string;
   updatedAt: string;

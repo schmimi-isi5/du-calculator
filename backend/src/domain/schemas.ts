@@ -101,6 +101,20 @@ export const ScoringOutputSchema = z.object({
   ),
 });
 
+/**
+ * Impact analysis and scoring merged into one structured response instead of
+ * two sequential AI calls - both need the same repository context and
+ * requirement, and scoring already consumed the impact analysis as input,
+ * so there was no dependency that actually required a second round-trip.
+ */
+export const RequirementAssessmentSchema = z.object({
+  impactAnalysis: ImpactAnalysisSchema,
+  dimensions: DimensionScoresSchema,
+  overallAssessment: LocalizedTextSchema.describe(
+    "2-4 sentences per language characterizing the overall scope, complexity, and risk across all eight dimensions together.",
+  ),
+});
+
 // ---------------------------------------------------------------------------
 // Assumption & Clarification Engine schemas
 // ---------------------------------------------------------------------------
