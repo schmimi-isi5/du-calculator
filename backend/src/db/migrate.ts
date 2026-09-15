@@ -76,6 +76,25 @@ ALTER TABLE scoring_results ADD COLUMN IF NOT EXISTS assumptions_used JSONB NOT 
 
 CREATE INDEX IF NOT EXISTS idx_scoring_results_created_at ON scoring_results (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_scoring_results_snapshot_id ON scoring_results (snapshot_id);
+
+-- One row per AI provider call, for the cost dashboard: which operation,
+-- against which provider/model, how many tokens of each kind, and the
+-- resulting cost - null when the (provider, model) has no known price
+-- (see ai/pricing.ts) rather than a guessed number.
+CREATE TABLE IF NOT EXISTS ai_usage_log (
+  id UUID PRIMARY KEY,
+  provider TEXT NOT NULL,
+  model TEXT NOT NULL,
+  operation TEXT NOT NULL,
+  input_tokens INTEGER NOT NULL,
+  output_tokens INTEGER NOT NULL,
+  cache_creation_input_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_read_input_tokens INTEGER NOT NULL DEFAULT 0,
+  cost_usd NUMERIC(14, 6),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_usage_log_created_at ON ai_usage_log (created_at DESC);
 `;
 
 export async function runMigrations(): Promise<void> {

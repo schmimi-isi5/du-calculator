@@ -346,3 +346,49 @@ export interface RequirementContext {
   createdAt: string;
   updatedAt: string;
 }
+
+// ---------------------------------------------------------------------------
+// AI usage & cost tracking
+// ---------------------------------------------------------------------------
+
+export type AIProviderName = "anthropic" | "openai" | "openrouter" | "local";
+
+/** One logged AI API call: what it cost, in tokens and (where the price is known) dollars. */
+export interface AIUsageRecord {
+  id: string;
+  provider: AIProviderName;
+  model: string;
+  /** Which AIProvider method this call was for, e.g. "scoreRequirement". */
+  operation: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationInputTokens: number;
+  cacheReadInputTokens: number;
+  /** null when the (provider, model) has no known price (e.g. an unlisted OpenRouter model) - never a guessed number. */
+  costUsd: number | null;
+  createdAt: string;
+}
+
+export interface AIUsageBreakdownEntry {
+  key: string;
+  requestCount: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationInputTokens: number;
+  cacheReadInputTokens: number;
+  costUsd: number | null;
+}
+
+export interface AIUsageSummary {
+  requestCount: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationInputTokens: number;
+  cacheReadInputTokens: number;
+  /** Sum of costUsd across calls with a known price; null if none had one. */
+  costUsd: number | null;
+  /** Count of calls whose cost could not be determined (unknown model price). */
+  unknownCostRequestCount: number;
+  byModel: AIUsageBreakdownEntry[];
+  byOperation: AIUsageBreakdownEntry[];
+}
