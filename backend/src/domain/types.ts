@@ -376,7 +376,13 @@ export interface RequirementContext {
 // AI usage & cost tracking
 // ---------------------------------------------------------------------------
 
-export type AIProviderName = "anthropic" | "openai" | "openrouter" | "local";
+// "openrouter" and "local" are the legacy single-active-provider path (see
+// config.ts AI_PROVIDER, ai/getAIProvider.ts) - a generic escape hatch for
+// "any other OpenAI-compatible endpoint", predating the per-request Model
+// Registry (domain/models.ts). "deepseek" | "google" | "qwen" | "ollama" are
+// registry-native providers, each independently configured and selectable
+// per request regardless of what AI_PROVIDER points at.
+export type AIProviderName = "anthropic" | "openai" | "openrouter" | "local" | "deepseek" | "google" | "qwen" | "ollama";
 
 /** One logged AI API call: what it cost, in tokens and (where the price is known) dollars. */
 export interface AIUsageRecord {

@@ -35,6 +35,20 @@ describe("resolvePricing", () => {
     expect(resolvePricing("openrouter", "deepseek/deepseek-chat", null)).toBeNull();
     expect(resolvePricing("openai", "some-future-model", null)).toBeNull();
   });
+
+  it("falls back to the central Model Registry for a provider with no legacy static price table", () => {
+    // "deepseek-flash" is the registry's apiModel for id "deepseek-v41-flash" -
+    // pricing.ts must never duplicate that number, only look it up.
+    expect(resolvePricing("deepseek", "deepseek-flash", null)).toEqual({ inputPerMTok: 0.28, outputPerMTok: 0.42 });
+  });
+
+  it("prices the local Ollama model at zero via the registry, same as the dedicated local-provider case", () => {
+    expect(resolvePricing("ollama", "qwen3-coder:30b", null)).toEqual({ inputPerMTok: 0, outputPerMTok: 0 });
+  });
+
+  it("returns null for a registry provider's unlisted apiModel", () => {
+    expect(resolvePricing("google", "gemini-1.0-pro", null)).toBeNull();
+  });
 });
 
 describe("estimateCostUsd", () => {

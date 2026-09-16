@@ -30,6 +30,7 @@ import type {
 } from "../domain/types.js";
 import type { AIProvider, RepositoryIdentity, ResolvedRequirementKnowledge, UsageContext } from "./AIProvider.js";
 import { AIProviderError } from "./AIProvider.js";
+import { mapOpenAICompatibleError } from "./llmErrors.js";
 import {
   buildAssessmentPrompt,
   buildContextResolutionPrompt,
@@ -40,8 +41,8 @@ import { toOpenAIStrictJsonSchema } from "./openAIStrictSchema.js";
 import { recordUsage } from "./usageTracker.js";
 
 export interface OpenAICompatibleProviderOptions {
-  /** Which AIProviderName this instance reports to the usage log - "openai" | "openrouter" | "local". */
-  providerName: Extract<AIProviderName, "openai" | "openrouter" | "local">;
+  /** Which AIProviderName this instance reports to the usage log. */
+  providerName: Extract<AIProviderName, "openai" | "openrouter" | "local" | "deepseek" | "google" | "qwen" | "ollama">;
   apiKey: string;
   /** Omit to use the real OpenAI API; set for OpenRouter or a local server. */
   baseURL?: string;
@@ -186,40 +187,31 @@ export class OpenAICompatibleProvider implements AIProvider {
 
       const message = response.choices[0]?.message;
       if (message?.refusal) {
-        throw new AIProviderError(`AI provider refused the ${step} request: ${message.refusal}`);
+        throw new AIProviderError(`AI provider refused the ${step} request: ${message.refusal}`, "invalid_request");
       }
       if (!message?.content) {
-        throw new AIProviderError(`AI provider response for ${step} contained no content.`);
+        throw new AIProviderError(`AI provider response for ${step} contained no content.`, "unknown_provider_error");
       }
 
       let parsedJson: unknown;
       try {
         parsedJson = JSON.parse(message.content);
       } catch (err) {
-        throw new AIProviderError(`AI provider response for ${step} was not valid JSON.`, err);
+        throw new AIProviderError(`AI provider response for ${step} was not valid JSON.`, "unknown_provider_error", err);
       }
 
       const parsed = schema.safeParse(parsedJson);
       if (!parsed.success) {
         throw new AIProviderError(
           `AI provider response for ${step} could not be parsed into the expected structure.`,
+          "unknown_provider_error",
           parsed.error,
         );
       }
 
       return parsed.data;
     } catch (err) {
-      if (err instanceof AIProviderError) throw err;
-      if (err instanceof OpenAI.AuthenticationError) {
-        throw new AIProviderError(`AI provider authentication failed for ${this.providerName}.`, err);
-      }
-      if (err instanceof OpenAI.RateLimitError) {
-        throw new AIProviderError("AI provider rate limit exceeded. Try again shortly.", err);
-      }
-      if (err instanceof OpenAI.APIError) {
-        throw new AIProviderError(`AI provider request for ${step} failed: ${err.message}`, err);
-      }
-      throw new AIProviderError(`AI provider request for ${step} failed unexpectedly.`, err);
+      throw mapOpenAICompatibleError(err, step, this.providerName);
     }
   }
 }

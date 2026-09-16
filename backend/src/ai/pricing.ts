@@ -8,6 +8,7 @@
 // per-token bill at all) intentionally return `null` from resolvePricing()
 // rather than a guessed number - the usage log and dashboard show those
 // calls as "cost unknown" instead of a fabricated $0 or an invented rate.
+import { findByProviderAndApiModel } from "../domain/models.js";
 import type { AIProviderName } from "../domain/types.js";
 
 export interface ModelPricing {
@@ -33,6 +34,12 @@ const CACHE_MULTIPLIERS: Record<AIProviderName, CacheMultipliers> = {
   openai: { write5m: 1, write1h: 1, read: 0.5 },
   openrouter: { write5m: 1, write1h: 1, read: 1 },
   local: { write5m: 1, write1h: 1, read: 1 },
+  // No fixed, verified cache-discount economics for these - see the file
+  // comment above: better to slightly overstate cost than invent a discount.
+  deepseek: { write5m: 1, write1h: 1, read: 1 },
+  google: { write5m: 1, write1h: 1, read: 1 },
+  qwen: { write5m: 1, write1h: 1, read: 1 },
+  ollama: { write5m: 1, write1h: 1, read: 1 },
 };
 
 const ANTHROPIC_PRICING: Record<string, ModelPricing> = {
@@ -60,9 +67,26 @@ const OPENAI_PRICING: Record<string, ModelPricing> = {
   "gpt-4o-mini": { inputPerMTok: 0.15, outputPerMTok: 0.6 },
 };
 
+/**
+ * Prices for a model declared in the central Model Registry (domain/models.ts)
+ * - the single source of truth for every model that module knows about,
+ * looked up by the (provider, apiModel) string pair the API actually
+ * returned (never a duplicated string literal here). Legacy models that
+ * predate the registry (e.g. gpt-5, claude-haiku-4-5) still resolve through
+ * the static tables below instead.
+ */
+function lookupRegistryPricing(provider: AIProviderName, model: string): ModelPricing | null {
+  const entry = findByProviderAndApiModel(provider, model);
+  if (!entry || entry.inputPricePerMillion === undefined || entry.outputPricePerMillion === undefined) return null;
+  return { inputPerMTok: entry.inputPricePerMillion, outputPerMTok: entry.outputPricePerMillion };
+}
+
 function lookupStaticPricing(provider: AIProviderName, model: string): ModelPricing | null {
-  if (provider === "anthropic") return ANTHROPIC_PRICING[model] ?? null;
-  if (provider === "openai") return OPENAI_PRICING[model] ?? null;
+  if (provider === "anthropic") return ANTHROPIC_PRICING[model] ?? lookupRegistryPricing(provider, model);
+  if (provider === "openai") return OPENAI_PRICING[model] ?? lookupRegistryPricing(provider, model);
+  if (provider === "deepseek" || provider === "google" || provider === "qwen" || provider === "ollama") {
+    return lookupRegistryPricing(provider, model);
+  }
   // OpenRouter: no fixed table (thousands of models, prices vary per
   // upstream provider and change independently of this app). Local: no
   // per-token billing at all. Both fall through to the custom-price

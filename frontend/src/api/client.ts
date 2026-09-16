@@ -3,6 +3,7 @@ import type {
   AIUsageLogEntry,
   AIUsageSummary,
   AssumptionAction,
+  OllamaStatus,
   QualityLevel,
   Requirement,
   RepositorySnapshot,
@@ -83,8 +84,15 @@ export function resolveRequirementContext(
   requirement: Requirement,
   qualityLevel: QualityLevel,
   model?: string,
+  privacyMode?: "local-only",
 ): Promise<RequirementContext> {
-  return postJson<RequirementContext>("/api/requirement-context", { snapshotId, requirement, qualityLevel, model });
+  return postJson<RequirementContext>("/api/requirement-context", {
+    snapshotId,
+    requirement,
+    qualityLevel,
+    model,
+    privacyMode,
+  });
 }
 
 export function getRequirementContext(id: string): Promise<RequirementContext> {
@@ -136,6 +144,10 @@ export function getAIUsageConfig(): Promise<AIUsageConfig> {
 
 export function getSelectableModels(): Promise<SelectableModelsResponse> {
   return getJson<SelectableModelsResponse>("/api/ai-usage/models");
+}
+
+export function getOllamaStatus(): Promise<OllamaStatus> {
+  return getJson<OllamaStatus>("/api/ai-usage/ollama-status");
 }
 
 export function getAIUsageLog(from: Date, to: Date, limit = 500): Promise<AIUsageLogEntry[]> {

@@ -1,8 +1,14 @@
 import type { Response } from "express";
 import { Router } from "express";
 import { AIProviderError } from "../ai/AIProvider.js";
-import { config } from "../config.js";
-import { ANTHROPIC_SELECTABLE_MODELS, isSelectableAnthropicModel } from "../domain/models.js";
+import { currentProviderCredentials } from "../ai/providerAvailability.js";
+import {
+  AUTO_MODEL_ID,
+  getModelById,
+  isSelectableModel,
+  listAvailableModels,
+  NoAvailableModelError,
+} from "../domain/models.js";
 import { DEFAULT_QUALITY_LEVEL, isQualityLevel } from "../domain/qualityLevels.js";
 import type { QualityLevel, Requirement, RequirementContext } from "../domain/types.js";
 import { logger } from "../logging.js";
@@ -17,11 +23,12 @@ import { store } from "../store/PostgresScoringStore.js";
 import { asyncHandler } from "./asyncHandler.js";
 import { errorCause } from "./errorCause.js";
 import { parseRequirement } from "./requirementInput.js";
-import { defaultModelForActiveProvider, RequirementContextError, runContextResolution } from "./requirementContextService.js";
+import { RequirementContextError, runContextResolution, type ModelSelection } from "./requirementContextService.js";
 
 export const requirementContextRouter = Router();
 
 const ASSUMPTION_ACTIONS: readonly AssumptionAction[] = ["CONFIRM", "REJECT", "EDIT"];
+const DEFAULT_MODEL_SELECTION: ModelSelection = { kind: "default" };
 
 // Runs (or re-runs) resolution and responds, sharing one error-handling
 // path for the three endpoints below that can trigger it.
@@ -31,20 +38,26 @@ async function resolveAndRespond(
   requirement: Requirement,
   existing: RequirementContext | null,
   qualityLevel: QualityLevel = DEFAULT_QUALITY_LEVEL,
-  model: string = defaultModelForActiveProvider(),
+  modelSelection: ModelSelection = DEFAULT_MODEL_SELECTION,
+  privacyMode?: "local-only",
 ) {
   try {
-    const context = await runContextResolution(snapshotId, requirement, existing, qualityLevel, model);
+    const context = await runContextResolution(snapshotId, requirement, existing, qualityLevel, modelSelection, privacyMode);
     res.status(200).json(context);
   } catch (err) {
     if (err instanceof RequirementContextError) {
       res.status(400).json({ error: err.message });
       return;
     }
+    if (err instanceof NoAvailableModelError) {
+      res.status(503).json({ error: err.message });
+      return;
+    }
     if (err instanceof AIProviderError) {
       logger.error("Requirement context resolution failed", {
         snapshotId,
         error: err.message,
+        code: err.code,
         cause: errorCause(err),
       });
       res.status(200).json({
@@ -52,7 +65,7 @@ async function resolveAndRespond(
         snapshotId,
         requirement,
         qualityLevel: existing?.qualityLevel ?? qualityLevel,
-        model: existing?.model ?? model,
+        model: existing?.model ?? (modelSelection.kind === "explicit" ? modelSelection.modelId : "unknown"),
         normalization: existing?.normalization ?? null,
         knownFacts: existing?.knownFacts ?? [],
         assumptions: existing?.assumptions ?? [],
@@ -73,8 +86,13 @@ async function resolveAndRespond(
 requirementContextRouter.post(
   "/",
   asyncHandler(async (req, res) => {
-    const { snapshotId, requirement: requirementInput, qualityLevel: qualityLevelInput, model: modelInput } =
-      req.body ?? {};
+    const {
+      snapshotId,
+      requirement: requirementInput,
+      qualityLevel: qualityLevelInput,
+      model: modelInput,
+      privacyMode: privacyModeInput,
+    } = req.body ?? {};
 
     if (typeof snapshotId !== "string" || snapshotId.length === 0) {
       res.status(400).json({ error: "snapshotId is required." });
@@ -98,26 +116,43 @@ requirementContextRouter.post(
       qualityLevel = qualityLevelInput;
     }
 
-    // Only "anthropic" has a curated, client-selectable model list (see
-    // domain/models.ts) - other providers run exactly one operator-
-    // configured model, so a client-provided override is rejected rather
-    // than silently ignored (it would otherwise look accepted but do nothing).
-    let model = defaultModelForActiveProvider();
-    if (modelInput !== undefined) {
-      if (config.aiProvider !== "anthropic") {
-        res.status(400).json({ error: `model cannot be chosen per request when AI_PROVIDER is "${config.aiProvider}".` });
+    let privacyMode: "local-only" | undefined;
+    if (privacyModeInput !== undefined) {
+      if (privacyModeInput !== "local-only") {
+        res.status(400).json({ error: 'privacyMode must be "local-only" if provided.' });
         return;
       }
-      if (!isSelectableAnthropicModel(modelInput)) {
+      privacyMode = "local-only";
+    }
+
+    // "auto" (spec section 8) and "no model given at all" (section 7,
+    // default) are resolved to a concrete registry id inside
+    // runContextResolution, which is the one place that has the repository
+    // context Auto-routing needs - see requirementContextService.ts
+    // resolveModelSelection. An explicit choice is validated here so an
+    // unusable model is rejected before any AI call is made.
+    let modelSelection: ModelSelection = DEFAULT_MODEL_SELECTION;
+    if (modelInput === AUTO_MODEL_ID) {
+      modelSelection = { kind: "auto" };
+    } else if (modelInput !== undefined) {
+      const credentials = currentProviderCredentials();
+      if (!isSelectableModel(modelInput, credentials)) {
         res.status(400).json({
-          error: `model must be one of: ${ANTHROPIC_SELECTABLE_MODELS.map((m) => m.id).join(", ")}.`,
+          error: `model must be "${AUTO_MODEL_ID}" or one of: ${listAvailableModels(credentials)
+            .map((m) => m.id)
+            .join(", ")}.`,
         });
         return;
       }
-      model = modelInput;
+      const entry = getModelById(modelInput);
+      if (privacyMode === "local-only" && !entry?.local) {
+        res.status(400).json({ error: "privacyMode=local-only forbids choosing a cloud model explicitly." });
+        return;
+      }
+      modelSelection = { kind: "explicit", modelId: modelInput };
     }
 
-    await resolveAndRespond(res, snapshotId, requirement, null, qualityLevel, model);
+    await resolveAndRespond(res, snapshotId, requirement, null, qualityLevel, modelSelection, privacyMode);
   }),
 );
 

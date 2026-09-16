@@ -94,10 +94,28 @@ export interface AIProvider {
   ): Promise<RequirementAssessment>;
 }
 
+// Typed error classification (spec section 13) - lets calling code (and
+// future programmatic handling, e.g. Auto-mode fallback decisions) branch
+// on *kind* of failure instead of parsing message strings. See
+// ai/llmErrors.ts for where each provider's SDK errors get mapped to one of
+// these.
+export type LLMErrorCode =
+  | "authentication_error"
+  | "rate_limit"
+  | "timeout"
+  | "provider_unavailable"
+  | "model_unavailable"
+  | "invalid_request"
+  | "context_too_large"
+  | "unknown_provider_error";
+
 export class AIProviderError extends Error {
-  constructor(message: string, cause?: unknown) {
+  readonly code: LLMErrorCode;
+
+  constructor(message: string, code: LLMErrorCode = "unknown_provider_error", cause?: unknown) {
     super(message);
     this.name = "AIProviderError";
+    this.code = code;
     if (cause !== undefined) this.cause = cause;
   }
 }

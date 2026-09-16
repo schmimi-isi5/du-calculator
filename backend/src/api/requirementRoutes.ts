@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { AIProviderError } from "../ai/AIProvider.js";
-import { getAIProvider } from "../ai/getAIProvider.js";
+import { getAIProviderForModel } from "../ai/getAIProvider.js";
 import { config } from "../config.js";
+import { getModelById } from "../domain/models.js";
 import type { ImpactAnalysis, ScoringResult } from "../domain/types.js";
 import { logger } from "../logging.js";
 import { activeAssumptions } from "../scoring/clarificationGate.js";
@@ -74,7 +75,11 @@ requirementRouter.post("/score", asyncHandler(async (req, res) => {
   await store.saveScoringResult(result);
 
   try {
-    const aiProvider = getAIProvider();
+    const modelEntry = getModelById(requirementContext.model);
+    if (!modelEntry) {
+      throw new AIProviderError(`Unknown model "${requirementContext.model}".`, "model_unavailable");
+    }
+    const aiProvider = getAIProviderForModel(modelEntry);
     const knowledge = {
       knownFacts: requirementContext.knownFacts,
       assumptions: requirementContext.assumptions,

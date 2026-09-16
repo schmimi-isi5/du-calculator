@@ -22,6 +22,7 @@ import type {
 import { QUALITY_PROFILES, type EffortLevel } from "../domain/qualityLevels.js";
 import type { AIProvider, RepositoryIdentity, ResolvedRequirementKnowledge, UsageContext } from "./AIProvider.js";
 import { AIProviderError } from "./AIProvider.js";
+import { mapAnthropicError } from "./llmErrors.js";
 import {
   buildAssessmentPrompt,
   buildContextResolutionPrompt,
@@ -168,31 +169,19 @@ export class AnthropicProvider implements AIProvider {
       }
 
       if (response.stop_reason === "refusal") {
-        throw new AIProviderError(`AI provider refused the ${step} request for safety reasons.`);
+        throw new AIProviderError(`AI provider refused the ${step} request for safety reasons.`, "invalid_request");
       }
 
       if (!response.parsed_output) {
         throw new AIProviderError(
           `AI provider response for ${step} could not be parsed into the expected structure.`,
+          "unknown_provider_error",
         );
       }
 
       return response.parsed_output as T;
     } catch (err) {
-      if (err instanceof AIProviderError) throw err;
-      if (err instanceof Anthropic.AuthenticationError) {
-        throw new AIProviderError(
-          "AI provider authentication failed. Check that ANTHROPIC_API_KEY is set correctly.",
-          err,
-        );
-      }
-      if (err instanceof Anthropic.RateLimitError) {
-        throw new AIProviderError("AI provider rate limit exceeded. Try again shortly.", err);
-      }
-      if (err instanceof Anthropic.APIError) {
-        throw new AIProviderError(`AI provider request for ${step} failed: ${err.message}`, err);
-      }
-      throw new AIProviderError(`AI provider request for ${step} failed unexpectedly.`, err);
+      throw mapAnthropicError(err, step);
     }
   }
 }

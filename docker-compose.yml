@@ -37,6 +37,21 @@ services:
       LOCAL_AI_API_KEY: ${LOCAL_AI_API_KEY:-}
       AI_CUSTOM_INPUT_PRICE_PER_MTOK: ${AI_CUSTOM_INPUT_PRICE_PER_MTOK:-}
       AI_CUSTOM_OUTPUT_PRICE_PER_MTOK: ${AI_CUSTOM_OUTPUT_PRICE_PER_MTOK:-}
+      # Multi-LLM Model Registry (backend/src/domain/models.ts) - independent
+      # of AI_PROVIDER above, each lets one more provider's models appear in
+      # the per-requirement picker.
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      GOOGLE_AI_API_KEY: ${GOOGLE_AI_API_KEY:-}
+      QWEN_API_KEY: ${QWEN_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-}
+      GOOGLE_BASE_URL: ${GOOGLE_BASE_URL:-}
+      QWEN_BASE_URL: ${QWEN_BASE_URL:-}
+      # Local Ollama server - reachable from inside the container, so
+      # "localhost" would point at the container itself, not the host
+      # machine; override in .env with the host's real address.
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://localhost:11434}
+      DEFAULT_LLM_MODEL: ${DEFAULT_LLM_MODEL:-}
+      LLM_ALLOW_PREMIUM_FALLBACK: ${LLM_ALLOW_PREMIUM_FALLBACK:-}
       PRICE_PER_DU: ${PRICE_PER_DU:-300}
       GIT_CLONE_TIMEOUT_MS: ${GIT_CLONE_TIMEOUT_MS:-60000}
       GIT_MAX_REPO_FILES: ${GIT_MAX_REPO_FILES:-5000}
