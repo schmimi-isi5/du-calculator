@@ -45,7 +45,7 @@ SPA and proxying `/api/*` to `backend`). Postgres data persists in the `postgres
 3. Set these as environment variables in Coolify's UI (no `.env` file needed there):
    - `POSTGRES_PASSWORD` (required)
    - `ANTHROPIC_API_KEY` (required)
-   - `POSTGRES_USER`, `POSTGRES_DB`, `PRICE_PER_DU`, `FRONTEND_PORT` (all optional, have defaults)
+   - `POSTGRES_USER`, `POSTGRES_DB`, `HOURS_PER_DU`, `BILLING_RATE_PER_HOUR`, `FRONTEND_PORT` (all optional, have defaults)
 4. Deploy. The `backend` service runs its own schema setup on startup - no separate migration step.
 
 ## Multi-LLM Model Selection

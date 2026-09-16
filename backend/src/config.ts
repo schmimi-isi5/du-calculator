@@ -62,13 +62,21 @@ function parseListEnv(name: string): string[] {
 export const config = {
   port: parseIntEnv("PORT", 4000),
   databaseUrl: requireEnv("DATABASE_URL"),
-  pricePerDU: parsePriceEnv("PRICE_PER_DU", 300),
   // A rough, operator-tunable business assumption for the internal effort
   // report (scoring/effortEstimator.ts) - DU explicitly represents scope/
   // complexity/risk, not time, so there is no measured DU-to-hours
   // conversion; 6h/DU (~one working day per DU) is a starting default, not
   // a verified rate. Adjust once real project data gives a better number.
   hoursPerDU: parsePriceEnv("HOURS_PER_DU", 6) ?? 6,
+  // The customer price is DERIVED from this - developmentUnits × hoursPerDU
+  // × billingRatePerHour (duEngine.ts computeDuResult) - not set
+  // independently of the time it takes to deliver. Replaces the old,
+  // independent PRICE_PER_DU: at its default (300) with the default
+  // hoursPerDU (6), that implied only ~50 €/h, well under any real billing
+  // rate - deriving price from an explicit hourly rate makes that
+  // inconsistency structurally impossible instead of relying on the
+  // operator to keep two unrelated numbers in sync by hand.
+  billingRatePerHour: parsePriceEnv("BILLING_RATE_PER_HOUR", 160) ?? 160,
   gitCloneTimeoutMs: parseIntEnv("GIT_CLONE_TIMEOUT_MS", 60_000),
   gitMaxRepoFiles: parseIntEnv("GIT_MAX_REPO_FILES", 5000),
 

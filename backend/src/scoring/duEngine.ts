@@ -129,12 +129,18 @@ export function mapScoreToClass(
   return { duClass: "XXL", developmentUnits: estimateXXLDevelopmentUnits(weightedScore), isRoughEstimate: true };
 }
 
-export function calculatePrice(
-  developmentUnits: number | null,
-  pricePerDU: number | null,
-): number | null {
-  if (developmentUnits === null || pricePerDU === null) return null;
-  return round2(developmentUnits * pricePerDU);
+/**
+ * Price is derived from the time estimate, not set independently - DU price
+ * = total estimated hours × the operator's billing rate per hour
+ * (config.ts BILLING_RATE_PER_HOUR). This is a deliberate consistency
+ * guarantee: a price set independently of the hours it takes to deliver
+ * can silently drift below cost (this app's own PRICE_PER_DU default of
+ * 300 for a 6-hour estimate implied ~50 €/h, far under a real billing
+ * rate) - deriving it removes that possibility by construction.
+ */
+export function calculatePrice(totalHours: number | null, billingRatePerHour: number | null): number | null {
+  if (totalHours === null || billingRatePerHour === null) return null;
+  return round2(totalHours * billingRatePerHour);
 }
 
 /**
@@ -143,13 +149,17 @@ export function calculatePrice(
  * DECOMPOSITION_REQUIRED) - that is an application-level concern based on
  * confidenceLevel and duClass, handled by the caller (see api/requirementRoutes.ts).
  */
-export function computeDuResult(scores: DimensionScores, pricePerDU: number | null, hoursPerDU: number): DuResult {
+export function computeDuResult(
+  scores: DimensionScores,
+  billingRatePerHour: number | null,
+  hoursPerDU: number,
+): DuResult {
   const weightedScore = calculateWeightedScore(scores);
   const { duClass, developmentUnits, isRoughEstimate } = mapScoreToClass(weightedScore);
   const overallConfidence = calculateOverallConfidence(scores);
   const confidenceLevel = classifyConfidence(overallConfidence);
-  const price = calculatePrice(developmentUnits, pricePerDU);
   const timeEstimate = estimateTime(developmentUnits, scores, hoursPerDU);
+  const price = calculatePrice(timeEstimate.totalHours, billingRatePerHour);
   const alternativeApproaches = estimateAlternativeApproaches(scores, timeEstimate);
 
   return {

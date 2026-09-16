@@ -113,16 +113,16 @@ export function ScoringPanel({ loading, result, language, onChangeLanguage }: Pr
 
       {result?.impactAnalysis && (
         <div className="profile-section">
-          <strong style={{ fontSize: 13 }}>Impact Analysis</strong>
+          <strong style={{ fontSize: 13 }}>Auswirkungsanalyse</strong>
           <div className="impact-grid" style={{ marginTop: 8 }}>
-            <ImpactBlock title="Existing" items={result.impactAnalysis.existing} />
-            <ImpactBlock title="Reusable" items={result.impactAnalysis.reusable} />
-            <ImpactBlock title="Modify" items={result.impactAnalysis.modify} />
-            <ImpactBlock title="Create" items={result.impactAnalysis.create} />
-            <ImpactBlock title="Data Changes" items={result.impactAnalysis.dataChanges} />
-            <ImpactBlock title="Integrations" items={result.impactAnalysis.integrations} />
+            <ImpactBlock title="Vorhanden" items={result.impactAnalysis.existing} />
+            <ImpactBlock title="Wiederverwendbar" items={result.impactAnalysis.reusable} />
+            <ImpactBlock title="Anzupassen" items={result.impactAnalysis.modify} />
+            <ImpactBlock title="Neu zu erstellen" items={result.impactAnalysis.create} />
+            <ImpactBlock title="Datenänderungen" items={result.impactAnalysis.dataChanges} />
+            <ImpactBlock title="Integrationen" items={result.impactAnalysis.integrations} />
             <ImpactBlock title="Tests" items={result.impactAnalysis.tests} />
-            <ImpactBlock title="Risks" items={result.impactAnalysis.risks} />
+            <ImpactBlock title="Risiken" items={result.impactAnalysis.risks} />
           </div>
         </div>
       )}

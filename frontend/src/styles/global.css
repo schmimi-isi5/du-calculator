@@ -1348,3 +1348,46 @@ code.file-path {
   font-weight: 700;
   color: var(--teal);
 }
+
+.effort-bar-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 140px;
+}
+
+.effort-bar-track {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: #eef1f0;
+  overflow: hidden;
+}
+
+.effort-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--green);
+}
+
+.effort-bar-fill.baseline {
+  background: var(--muted);
+}
+
+.effort-bar-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  width: 34px;
+  text-align: right;
+}
+
+.savings-badge {
+  display: inline-block;
+  background: var(--green-tint);
+  color: #3d6b09;
+  font-weight: 800;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
