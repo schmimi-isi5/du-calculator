@@ -29,6 +29,7 @@ describe("getAIProviderForModel", () => {
     "DEEPSEEK_API_KEY",
     "GOOGLE_AI_API_KEY",
     "QWEN_API_KEY",
+    "OPENROUTER_API_KEY",
   ] as const;
   const originalValues = Object.fromEntries(keysToRestore.map((k) => [k, process.env[k]]));
 
@@ -76,5 +77,29 @@ describe("getAIProviderForModel", () => {
     const opus = getAIProviderForModel(getModelById("claude-opus-5")!);
     const sonnet = getAIProviderForModel(getModelById("claude-sonnet-5")!);
     expect(opus).toBe(sonnet);
+  });
+
+  it("throws provider_unavailable for an OpenRouter model with no OPENROUTER_API_KEY configured", async () => {
+    const { getAIProviderForModel } = await import("./getAIProvider.js");
+    const { buildOpenRouterEntries } = await import("../domain/models.js");
+    const { AIProviderError } = await import("./AIProvider.js");
+
+    const [entry] = buildOpenRouterEntries(["anthropic/claude-3.7-sonnet"]);
+    try {
+      getAIProviderForModel(entry!);
+      expect.unreachable("expected getAIProviderForModel to throw");
+    } catch (err) {
+      expect(err).toBeInstanceOf(AIProviderError);
+      expect((err as InstanceType<typeof AIProviderError>).code).toBe("provider_unavailable");
+    }
+  });
+
+  it("builds a provider instance for an OpenRouter model once OPENROUTER_API_KEY is configured", async () => {
+    process.env.OPENROUTER_API_KEY = "test-key";
+    const { getAIProviderForModel } = await import("./getAIProvider.js");
+    const { buildOpenRouterEntries } = await import("../domain/models.js");
+
+    const [entry] = buildOpenRouterEntries(["mistralai/mixtral-8x22b-instruct"]);
+    expect(() => getAIProviderForModel(entry!)).not.toThrow();
   });
 });

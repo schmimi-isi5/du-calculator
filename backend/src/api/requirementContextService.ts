@@ -5,7 +5,7 @@
 // "run resolution, then persist" only happens in one place.
 
 import { getAIProviderForModel } from "../ai/getAIProvider.js";
-import { currentProviderCredentials } from "../ai/providerAvailability.js";
+import { currentModelRegistry, currentProviderCredentials } from "../ai/providerAvailability.js";
 import { config } from "../config.js";
 import {
   getModelById,
@@ -35,7 +35,12 @@ export type ModelSelection =
 
 /** The model a request falls back to when it doesn't choose one at all (spec section 7) - not the same as an explicit "auto" pick (section 8), which runs the routing rule table instead. */
 export function defaultModelId(): string {
-  return resolveDefaultModel(currentProviderCredentials(), config.defaultLlmModel, config.allowPremiumAutoFallback);
+  return resolveDefaultModel(
+    currentProviderCredentials(),
+    config.defaultLlmModel,
+    config.allowPremiumAutoFallback,
+    currentModelRegistry(),
+  );
 }
 
 /**
@@ -88,7 +93,7 @@ export async function runContextResolution(
   // clarificationGate.ts buildResolvedContextParts.
   const maxNewClarifications = priorRounds < profile.maxResolutionRounds ? profile.maxClarificationsPerRound : 0;
 
-  const modelEntry = getModelById(effectiveModel);
+  const modelEntry = getModelById(effectiveModel, currentModelRegistry());
   if (!modelEntry) {
     throw new RequirementContextError(`Unknown model "${effectiveModel}".`);
   }
@@ -147,11 +152,12 @@ export function resolveModelSelection(
   if (selection.kind === "explicit") return selection.modelId;
 
   const credentials = currentProviderCredentials();
+  const registry = currentModelRegistry();
   if (selection.kind === "auto" || privacyMode === "local-only") {
     const criteria: AutoRoutingCriteria = { qualityLevel, isLargeContext, localOnly: privacyMode === "local-only" };
-    return resolveAutoModel(criteria, credentials, config.allowPremiumAutoFallback);
+    return resolveAutoModel(criteria, credentials, config.allowPremiumAutoFallback, registry);
   }
-  return resolveDefaultModel(credentials, config.defaultLlmModel, config.allowPremiumAutoFallback);
+  return resolveDefaultModel(credentials, config.defaultLlmModel, config.allowPremiumAutoFallback, registry);
 }
 
 /**

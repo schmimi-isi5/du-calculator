@@ -177,16 +177,60 @@ export const MODEL_REGISTRY: ModelRegistryEntry[] = [
   },
 ];
 
+/**
+ * OpenRouter is a gateway to hundreds of upstream models, not a fixed
+ * catalog like the other providers - there is no sensible fixed list of
+ * OpenRouter entries to hard-code here. Instead, the operator names exactly
+ * the OpenRouter model slugs they want selectable (OPENROUTER_MODELS, see
+ * config.ts), and this turns each into a registry entry at request time.
+ * Deliberately has no price fields: OpenRouter's per-model pricing varies by
+ * upstream provider and isn't fixed/verifiable from here - see
+ * ai/pricing.ts, which already treats "openrouter" as a no-fixed-price
+ * provider for exactly this reason.
+ */
+export function buildOpenRouterEntries(modelSlugs: string[]): ModelRegistryEntry[] {
+  return modelSlugs.map((slug) => ({
+    id: slug,
+    provider: "openrouter",
+    apiModel: slug,
+    displayName: humanizeOpenRouterSlug(slug),
+    description: "Über OpenRouter - Preis variiert je nach zugrunde liegendem Modell.",
+    category: "balanced",
+    enabled: true,
+    local: false,
+    supportsTools: true,
+    supportsStructuredOutput: true,
+  }));
+}
+
+function humanizeOpenRouterSlug(slug: string): string {
+  const name = slug.includes("/") ? slug.slice(slug.indexOf("/") + 1) : slug;
+  return name
+    .split(/[-_]/)
+    .filter(Boolean)
+    .map((word) => word[0]!.toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+/** The full set of models this deployment could offer - curated entries plus the operator's configured OpenRouter models. */
+export function buildEffectiveRegistry(openRouterModelSlugs: string[]): ModelRegistryEntry[] {
+  return [...MODEL_REGISTRY, ...buildOpenRouterEntries(openRouterModelSlugs)];
+}
+
 /** Pseudo model id, never a MODEL_REGISTRY entry - resolved to a concrete id by resolveAutoModel() before any AI call. */
 export const AUTO_MODEL_ID = "auto";
 
-export function getModelById(id: string): ModelRegistryEntry | undefined {
-  return MODEL_REGISTRY.find((m) => m.id === id);
+export function getModelById(id: string, registry: ModelRegistryEntry[] = MODEL_REGISTRY): ModelRegistryEntry | undefined {
+  return registry.find((m) => m.id === id);
 }
 
 /** Finds the registry entry a logged (provider, apiModel) pair refers to - used by ai/pricing.ts to price calls by the raw string the API actually returned. */
-export function findByProviderAndApiModel(provider: AIProviderName, apiModel: string): ModelRegistryEntry | undefined {
-  return MODEL_REGISTRY.find((m) => m.provider === provider && m.apiModel === apiModel);
+export function findByProviderAndApiModel(
+  provider: AIProviderName,
+  apiModel: string,
+  registry: ModelRegistryEntry[] = MODEL_REGISTRY,
+): ModelRegistryEntry | undefined {
+  return registry.find((m) => m.provider === provider && m.apiModel === apiModel);
 }
 
 /**
@@ -203,6 +247,7 @@ export interface ProviderCredentials {
   deepseek: boolean;
   google: boolean;
   qwen: boolean;
+  openrouter: boolean;
 }
 
 export function isModelConfigured(entry: ModelRegistryEntry, credentials: ProviderCredentials): boolean {
@@ -219,23 +264,32 @@ export function isModelConfigured(entry: ModelRegistryEntry, credentials: Provid
       return credentials.google;
     case "qwen":
       return credentials.qwen;
+    case "openrouter":
+      return credentials.openrouter;
     default:
-      // "openrouter" | "local": the legacy single-active-provider path, not
-      // part of the registry-driven multi-model flow.
+      // "local": the legacy single-active-provider path, not part of the
+      // registry-driven multi-model flow.
       return false;
   }
 }
 
 /** Enabled models this deployment can actually call right now. */
-export function listAvailableModels(credentials: ProviderCredentials): ModelRegistryEntry[] {
-  return MODEL_REGISTRY.filter((m) => m.enabled && isModelConfigured(m, credentials));
+export function listAvailableModels(
+  credentials: ProviderCredentials,
+  registry: ModelRegistryEntry[] = MODEL_REGISTRY,
+): ModelRegistryEntry[] {
+  return registry.filter((m) => m.enabled && isModelConfigured(m, credentials));
 }
 
 /** True for `AUTO_MODEL_ID` or any id `listAvailableModels` would return - the full set of values a client may legally send as `model`. */
-export function isSelectableModel(value: unknown, credentials: ProviderCredentials): value is string {
+export function isSelectableModel(
+  value: unknown,
+  credentials: ProviderCredentials,
+  registry: ModelRegistryEntry[] = MODEL_REGISTRY,
+): value is string {
   if (typeof value !== "string") return false;
   if (value === AUTO_MODEL_ID) return true;
-  return listAvailableModels(credentials).some((m) => m.id === value);
+  return listAvailableModels(credentials, registry).some((m) => m.id === value);
 }
 
 // Models expensive enough that they must never be picked silently - neither
@@ -276,8 +330,9 @@ export function resolveDefaultModel(
   credentials: ProviderCredentials,
   configuredDefaultId: string | null,
   allowPremiumFallback: boolean,
+  registry: ModelRegistryEntry[] = MODEL_REGISTRY,
 ): string {
-  const available = listAvailableModels(credentials);
+  const available = listAvailableModels(credentials, registry);
   const availableIds = new Set(available.map((m) => m.id));
 
   if (configuredDefaultId && availableIds.has(configuredDefaultId)) return configuredDefaultId;
@@ -365,20 +420,21 @@ export function resolveAutoModel(
   criteria: AutoRoutingCriteria,
   credentials: ProviderCredentials,
   allowPremiumFallback: boolean,
+  registry: ModelRegistryEntry[] = MODEL_REGISTRY,
 ): string {
   if (criteria.localOnly) {
-    const local = getModelById("qwen3-coder-local");
+    const local = getModelById("qwen3-coder-local", registry);
     if (!local || !local.enabled || !isModelConfigured(local, credentials)) {
       throw new NoAvailableModelError();
     }
     return local.id;
   }
 
-  const availableIds = new Set(listAvailableModels(credentials).map((m) => m.id));
+  const availableIds = new Set(listAvailableModels(credentials, registry).map((m) => m.id));
   const rule = AUTO_ROUTING_RULES.find((r) => r.matches(criteria) && availableIds.has(r.modelId));
   if (rule) return rule.modelId;
 
   // The rule table's pick isn't configured - degrade to the same
   // zero-config default fallback chain rather than failing outright.
-  return resolveDefaultModel(credentials, null, allowPremiumFallback);
+  return resolveDefaultModel(credentials, null, allowPremiumFallback, registry);
 }

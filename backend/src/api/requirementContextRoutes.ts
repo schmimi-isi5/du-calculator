@@ -1,7 +1,7 @@
 import type { Response } from "express";
 import { Router } from "express";
 import { AIProviderError } from "../ai/AIProvider.js";
-import { currentProviderCredentials } from "../ai/providerAvailability.js";
+import { currentModelRegistry, currentProviderCredentials } from "../ai/providerAvailability.js";
 import {
   AUTO_MODEL_ID,
   getModelById,
@@ -136,15 +136,16 @@ requirementContextRouter.post(
       modelSelection = { kind: "auto" };
     } else if (modelInput !== undefined) {
       const credentials = currentProviderCredentials();
-      if (!isSelectableModel(modelInput, credentials)) {
+      const registry = currentModelRegistry();
+      if (!isSelectableModel(modelInput, credentials, registry)) {
         res.status(400).json({
-          error: `model must be "${AUTO_MODEL_ID}" or one of: ${listAvailableModels(credentials)
+          error: `model must be "${AUTO_MODEL_ID}" or one of: ${listAvailableModels(credentials, registry)
             .map((m) => m.id)
             .join(", ")}.`,
         });
         return;
       }
-      const entry = getModelById(modelInput);
+      const entry = getModelById(modelInput, registry);
       if (privacyMode === "local-only" && !entry?.local) {
         res.status(400).json({ error: "privacyMode=local-only forbids choosing a cloud model explicitly." });
         return;
