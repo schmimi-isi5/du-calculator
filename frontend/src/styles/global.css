@@ -74,6 +74,17 @@ main {
   align-items: start;
 }
 
+/* CSS Grid items default to a min-width of "auto" (their content's
+   min-content size), not 0 - a wide, non-shrinking child (e.g. the history
+   table) can blow past its 1.55fr share and starve the sidebar column down
+   to almost nothing, wrapping every character onto its own line. Overriding
+   to 0 lets the fr sizing above actually apply; each column's own content
+   still scrolls internally where needed (e.g. .history-table-wrap). */
+.grid > section,
+.grid > aside {
+  min-width: 0;
+}
+
 @media (max-width: 900px) {
   .grid {
     grid-template-columns: 1fr;
