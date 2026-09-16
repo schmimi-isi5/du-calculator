@@ -150,6 +150,12 @@ export interface OllamaStatus {
   models: string[];
 }
 
+/** A candidate piece to split a too-broad requirement into - see ImpactAnalysis.suggestedDecomposition. */
+export interface SuggestedSubRequirement {
+  title: string;
+  description: string;
+}
+
 export interface ImpactAnalysis {
   existing: string[];
   reusable: string[];
@@ -160,6 +166,8 @@ export interface ImpactAnalysis {
   tests: string[];
   risks: string[];
   openQuestions: string[];
+  /** Usually empty - populated only when the AI judges the requirement's scope broad enough to warrant splitting. */
+  suggestedDecomposition: SuggestedSubRequirement[];
 }
 
 export const DIMENSION_ORDER = [

@@ -54,6 +54,18 @@ export function ScoringPanel({ loading, result, language, onChangeLanguage }: Pr
         <div className="notice" style={{ marginTop: 10 }}>
           Diese Anforderung ist zu groß für eine einzelne DU-Schätzung (Klasse XXL). Bitte in kleinere,
           bewertbare Requirements zerlegen.
+          {/* Absent on results scored before this feature shipped - the generic
+              text above still stands on its own in that case. */}
+          {(result.impactAnalysis?.suggestedDecomposition?.length ?? 0) > 0 && (
+            <div className="decomposition-list">
+              {result.impactAnalysis!.suggestedDecomposition.map((item, i) => (
+                <div className="decomposition-item" key={i}>
+                  <div className="decomposition-item-title">{item.title}</div>
+                  <div className="decomposition-item-description">{item.description}</div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

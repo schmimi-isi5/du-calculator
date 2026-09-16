@@ -275,6 +275,14 @@ Assumption-aware scoring:
 - List anything still genuinely uncertain after applying facts and assumptions in unresolvedRisks.
 `.trim();
 
+const DECOMPOSITION_RULE = `
+Suggested decomposition (impactAnalysis.suggestedDecomposition):
+- Most requirements do NOT need this - leave it as an empty array. Only populate it when the requirement's true SCOPE genuinely spans multiple substantial, separable pieces of work, each independently valuable and independently estimable on its own (e.g. it bundles several largely unrelated features, or touches many independent parts of the system end to end).
+- Do not propose a decomposition just because a requirement is difficult, risky, or uncertain in one area - that belongs in risks/unresolvedRisks/confidence instead, not here.
+- When you do propose one, list 2-6 candidate sub-requirements: a short customer-facing title and a one-sentence description each, in plain business language (not internal/technical jargon), together covering the full original scope with no gaps and no overlaps.
+- Never mention Development Units, a DU class/size, or a price in a candidate's title or description - describe what it does, not how much it costs. You are never told and must never guess the DU class this requirement will receive.
+`.trim();
+
 /**
  * Impact analysis and per-dimension scoring in one call. These used to be
  * two sequential AI calls, but scoring always took the impact analysis as
@@ -300,6 +308,8 @@ ${REUSE_RULE}
 ${BILINGUAL_RULE}
 
 ${ASSUMPTION_AWARE_SCORING_RULE}
+
+${DECOMPOSITION_RULE}
 
 ${QUALITY_PROFILES[qualityLevel].rationaleGuidance}
 

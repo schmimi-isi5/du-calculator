@@ -42,6 +42,13 @@ export const RepositoryProfileSchema = z.object({
   findings: z.array(RepositoryFindingSchema),
 });
 
+export const SuggestedSubRequirementSchema = z.object({
+  title: z.string().describe("Short, customer-facing title for this candidate sub-requirement."),
+  description: z
+    .string()
+    .describe("One-sentence description of this piece's scope, in plain business language - not internal jargon."),
+});
+
 export const ImpactAnalysisSchema = z.object({
   existing: z.array(z.string()),
   reusable: z.array(z.string()),
@@ -52,6 +59,11 @@ export const ImpactAnalysisSchema = z.object({
   tests: z.array(z.string()),
   risks: z.array(z.string()),
   openQuestions: z.array(z.string()),
+  suggestedDecomposition: z
+    .array(SuggestedSubRequirementSchema)
+    .describe(
+      "2-6 candidate sub-requirements only if this requirement's scope genuinely spans multiple substantial, separable pieces of work - empty array otherwise (the common case). See the decomposition rule in the system prompt for exactly when this applies.",
+    ),
 });
 
 const DimensionScoreSchema = z.object({
