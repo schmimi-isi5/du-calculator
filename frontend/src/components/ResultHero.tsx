@@ -10,9 +10,11 @@ export function ResultHero({ result }: Props) {
 
   const du = result?.duResult;
   const confidence = result?.confidence;
+  const isDecompositionRequired = result?.status === "DECOMPOSITION_REQUIRED";
+  const suggestionCount = result?.impactAnalysis?.suggestedDecomposition?.length ?? 0;
 
   return (
-    <div className={`hero ${view === "internal" ? "internal-mode" : ""}`}>
+    <div className={`hero ${view === "internal" ? "internal-mode" : ""} ${isDecompositionRequired ? "decomposition" : ""}`}>
       <div className="actions" style={{ marginTop: 0, justifyContent: "space-between" }}>
         <small>Development Units</small>
         <div className="view-toggle">
@@ -25,8 +27,22 @@ export function ResultHero({ result }: Props) {
         </div>
       </div>
 
-      <div className="du-value">{du?.developmentUnits ?? "–"} DU</div>
-      <div className="du-class">Klasse {du?.duClass ?? "–"}</div>
+      {isDecompositionRequired ? (
+        <div className="hero-alert">
+          <span className="hero-alert-icon" aria-hidden="true">
+            ⚠️
+          </span>
+          <div>
+            <div className="hero-alert-headline">Zerlegung empfohlen</div>
+            <div className="du-class">Klasse XXL - keine einzelne DU-Zahl</div>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="du-value">{du?.developmentUnits ?? "–"} DU</div>
+          <div className="du-class">Klasse {du?.duClass ?? "–"}</div>
+        </>
+      )}
 
       <div className="kpis">
         <div className="kpi">
@@ -43,6 +59,9 @@ export function ResultHero({ result }: Props) {
 
       <div className="hero-summary">
         {summaryText(result)}
+        {isDecompositionRequired && suggestionCount > 0 && (
+          <> {suggestionCount} Vorschläge dafür weiter unten in der Bewertung.</>
+        )}
         <br />
         <br />
         DU ist keine Zeiteinheit, sondern repräsentiert Scope, Komplexität und Risiko.
