@@ -130,6 +130,16 @@ ALTER TABLE ai_usage_log ADD COLUMN IF NOT EXISTS scoring_id UUID;
 
 CREATE INDEX IF NOT EXISTS idx_ai_usage_log_snapshot_id ON ai_usage_log (snapshot_id);
 CREATE INDEX IF NOT EXISTS idx_ai_usage_log_requirement_context_id ON ai_usage_log (requirement_context_id);
+
+-- Small operator-editable settings (Einstellungen tab) that shouldn't
+-- require an env var change + redeploy to adjust, unlike provider API keys
+-- (which stay in the environment - secrets are never written here). One row
+-- per key; a missing row means "use the env-configured / built-in default".
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 `;
 
 export async function runMigrations(): Promise<void> {

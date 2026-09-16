@@ -106,6 +106,15 @@ disabled, in the UI) - nothing else breaks. `OPENROUTER_MODELS` specifically: le
 OpenRouter simply offers no models in the per-requirement picker, regardless of whether
 `OPENROUTER_API_KEY` is set (the key alone, without naming any models, has nothing to select).
 
+### Settings (Einstellungen tab)
+
+Shows which providers are configured (never the credential itself - only "configured: true/false" and
+which env var to set) and lets an operator change the effective default model without an env var
+change + redeploy. The override is stored in Postgres (`app_settings` table, `GET`/`PUT
+/api/settings`), takes precedence over `DEFAULT_LLM_MODEL` when set, and falls back to it (then the
+built-in fallback chain) once cleared. API keys are never accepted or stored through this UI or API -
+they stay in the environment only.
+
 ### Local Ollama Setup
 
 Set `OLLAMA_BASE_URL` to your Ollama server's address (e.g. `http://192.168.10.139:11434`) - never

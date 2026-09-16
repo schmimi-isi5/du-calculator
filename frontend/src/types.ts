@@ -150,6 +150,23 @@ export interface OllamaStatus {
   models: string[];
 }
 
+/** Whether a provider's credential is configured - never the credential value itself. See backend/src/api/settingsRoutes.ts. */
+export interface ProviderStatus {
+  id: AIProviderName;
+  envVar: string;
+  configured: boolean;
+}
+
+export interface SettingsSnapshot {
+  autoModelId: string;
+  /** The currently effective default model - either defaultModelOverride, or the env-configured/built-in fallback if no override is set. */
+  defaultModelId: string;
+  /** The operator-set override (Einstellungen tab), or null if none is set. */
+  defaultModelOverride: string | null;
+  models: SelectableModel[];
+  providers: ProviderStatus[];
+}
+
 /** A candidate piece to split a too-broad requirement into - see ImpactAnalysis.suggestedDecomposition. */
 export interface SuggestedSubRequirement {
   title: string;

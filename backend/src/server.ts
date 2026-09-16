@@ -4,6 +4,7 @@ import { aiUsageRouter } from "./api/aiUsageRoutes.js";
 import { requirementContextRouter } from "./api/requirementContextRoutes.js";
 import { requirementRouter } from "./api/requirementRoutes.js";
 import { repositoryRouter } from "./api/repositoryRoutes.js";
+import { settingsRouter } from "./api/settingsRoutes.js";
 import { config } from "./config.js";
 import { runMigrations } from "./db/migrate.js";
 import { logger } from "./logging.js";
@@ -31,6 +32,7 @@ async function main(): Promise<void> {
   app.use("/api/requirement-context", requirementContextRouter);
   app.use("/api/requirement", requirementRouter);
   app.use("/api/ai-usage", aiUsageRouter);
+  app.use("/api/settings", settingsRouter);
 
   // Centralized error handler: never leak internal stack traces to the
   // client, but always log server-side so failures are diagnosable.

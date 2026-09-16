@@ -73,15 +73,18 @@ aiUsageRouter.get("/config", (_req, res) => {
 // /ollama-status for the local model specifically (spec section 10: "Ein
 // nicht verfügbares lokales Modell soll in der UI entsprechend markiert
 // werden").
-aiUsageRouter.get("/models", (_req, res) => {
-  const credentials = currentProviderCredentials();
-  const registry = currentModelRegistry();
-  res.status(200).json({
-    autoModelId: AUTO_MODEL_ID,
-    models: registry.filter((m) => m.enabled).map((m) => ({ ...m, available: isModelConfigured(m, credentials) })),
-    default: defaultModelId(),
-  });
-});
+aiUsageRouter.get(
+  "/models",
+  asyncHandler(async (_req, res) => {
+    const credentials = currentProviderCredentials();
+    const registry = currentModelRegistry();
+    res.status(200).json({
+      autoModelId: AUTO_MODEL_ID,
+      models: registry.filter((m) => m.enabled).map((m) => ({ ...m, available: isModelConfigured(m, credentials) })),
+      default: await defaultModelId(),
+    });
+  }),
+);
 
 // Live reachability check for the local Ollama server (spec section 10) -
 // deliberately not part of /models above, since it's a network call with

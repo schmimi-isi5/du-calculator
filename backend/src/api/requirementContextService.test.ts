@@ -8,22 +8,22 @@ import { resolveModelSelection } from "./requirementContextService.js";
 // guarantee behind spec section 13's "kein automatischer Wechsel auf einen
 // anderen Cloud-Provider" for manual selection.
 describe("resolveModelSelection", () => {
-  it("returns an explicit choice verbatim, ignoring quality level and context size", () => {
-    expect(resolveModelSelection({ kind: "explicit", modelId: "gpt-6-astra" }, "quick", false, undefined)).toBe(
-      "gpt-6-astra",
-    );
-    expect(resolveModelSelection({ kind: "explicit", modelId: "gpt-6-astra" }, "thorough", true, undefined)).toBe(
-      "gpt-6-astra",
-    );
+  it("returns an explicit choice verbatim, ignoring quality level and context size", async () => {
+    await expect(
+      resolveModelSelection({ kind: "explicit", modelId: "gpt-6-astra" }, "quick", false, undefined),
+    ).resolves.toBe("gpt-6-astra");
+    await expect(
+      resolveModelSelection({ kind: "explicit", modelId: "gpt-6-astra" }, "thorough", true, undefined),
+    ).resolves.toBe("gpt-6-astra");
   });
 
-  it("never substitutes a different model for an explicit choice, even under privacyMode=local-only", () => {
+  it("never substitutes a different model for an explicit choice, even under privacyMode=local-only", async () => {
     // requirementContextRoutes.ts is responsible for rejecting an explicit
     // non-local pick before this function is ever called with
     // privacyMode=local-only - this function's own contract is simply: an
     // explicit choice is never overridden, by anything.
-    expect(resolveModelSelection({ kind: "explicit", modelId: "claude-sonnet-5" }, "standard", false, "local-only")).toBe(
-      "claude-sonnet-5",
-    );
+    await expect(
+      resolveModelSelection({ kind: "explicit", modelId: "claude-sonnet-5" }, "standard", false, "local-only"),
+    ).resolves.toBe("claude-sonnet-5");
   });
 });
