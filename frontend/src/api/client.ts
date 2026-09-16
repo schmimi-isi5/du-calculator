@@ -12,6 +12,7 @@ import type {
   ScoringHistoryEntry,
   ScoringResult,
   SelectableModelsResponse,
+  SettingsSnapshot,
 } from "../types";
 
 export class ApiError extends Error {}
@@ -53,6 +54,20 @@ async function getJson<T>(path: string): Promise<T> {
   let response: Response;
   try {
     response = await fetch(path);
+  } catch {
+    throw new ApiError("Backend nicht erreichbar. Läuft der DU Calculator Server?");
+  }
+  return handleResponse<T>(response);
+}
+
+async function putJson<T>(path: string, body: unknown): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
   } catch {
     throw new ApiError("Backend nicht erreichbar. Läuft der DU Calculator Server?");
   }
@@ -148,6 +163,14 @@ export function getSelectableModels(): Promise<SelectableModelsResponse> {
 
 export function getOllamaStatus(): Promise<OllamaStatus> {
   return getJson<OllamaStatus>("/api/ai-usage/ollama-status");
+}
+
+export function getSettings(): Promise<SettingsSnapshot> {
+  return getJson<SettingsSnapshot>("/api/settings");
+}
+
+export function updateDefaultModel(modelId: string | null): Promise<SettingsSnapshot> {
+  return putJson<SettingsSnapshot>("/api/settings/default-model", { modelId });
 }
 
 export function getAIUsageLog(from: Date, to: Date, limit = 500): Promise<AIUsageLogEntry[]> {

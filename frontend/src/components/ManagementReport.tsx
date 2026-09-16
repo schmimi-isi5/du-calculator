@@ -81,7 +81,7 @@ export function ManagementReport({ result }: Props) {
         </div>
       )}
 
-      {view === "internal" && (
+      {view === "internal" && du.timeEstimate && (
         <div className="report-section">
           <h4>Interner Aufwand (Schätzung)</h4>
           <div className="report-summary-grid">
@@ -107,47 +107,57 @@ export function ManagementReport({ result }: Props) {
         </div>
       )}
 
-      <div className="report-section">
-        <h4>Vergleich: Umsetzungsansätze</h4>
-        <p className="report-note">
-          Grobe, evidenzbasierte Schätzung relativ zur klassischen Entwicklung - basierend auf den bewerteten
-          Dimensionen dieser Anforderung. Kein Ersatz für eine belastbare Machbarkeitsprüfung je Plattform.
-        </p>
-        <div className="approach-table-wrap">
-          <table className="approach-table">
-            <thead>
-              <tr>
-                <th>Ansatz</th>
-                <th>Rel. Aufwand</th>
-                <th>DU-Äquivalent</th>
-                {view === "internal" && <th>Std.</th>}
-                {view === "internal" && <th>Preis (Ä.)</th>}
-                <th>Einschätzung</th>
-              </tr>
-            </thead>
-            <tbody>
-              {du.alternativeApproaches.map((approach) => {
-                const duEquivalent =
-                  du.developmentUnits !== null ? Math.round(du.developmentUnits * approach.relativeEffort) : null;
-                const priceEquivalent =
-                  duEquivalent !== null && pricePerDUImplied !== null ? Math.round(duEquivalent * pricePerDUImplied) : null;
-                return (
-                  <tr key={approach.id} className={approach.id === "classicalDevelopment" ? "baseline" : ""}>
-                    <td>{approach.label}</td>
-                    <td>{Math.round(approach.relativeEffort * 100)}%</td>
-                    <td>{duEquivalent !== null ? `~${duEquivalent} DU` : "–"}</td>
-                    {view === "internal" && <td>{approach.estimatedHours.toFixed(1)} Std.</td>}
-                    {view === "internal" && (
-                      <td>{priceEquivalent !== null ? `${priceEquivalent.toLocaleString("de-DE")} €` : "–"}</td>
-                    )}
-                    <td>{approach.rationale}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+      {du.alternativeApproaches && du.alternativeApproaches.length > 0 ? (
+        <div className="report-section">
+          <h4>Vergleich: Umsetzungsansätze</h4>
+          <p className="report-note">
+            Grobe, evidenzbasierte Schätzung relativ zur klassischen Entwicklung - basierend auf den bewerteten
+            Dimensionen dieser Anforderung. Kein Ersatz für eine belastbare Machbarkeitsprüfung je Plattform.
+          </p>
+          <div className="approach-table-wrap">
+            <table className="approach-table">
+              <thead>
+                <tr>
+                  <th>Ansatz</th>
+                  <th>Rel. Aufwand</th>
+                  <th>DU-Äquivalent</th>
+                  {view === "internal" && <th>Std.</th>}
+                  {view === "internal" && <th>Preis (Ä.)</th>}
+                  <th>Einschätzung</th>
+                </tr>
+              </thead>
+              <tbody>
+                {du.alternativeApproaches.map((approach) => {
+                  const duEquivalent =
+                    du.developmentUnits !== null ? Math.round(du.developmentUnits * approach.relativeEffort) : null;
+                  const priceEquivalent =
+                    duEquivalent !== null && pricePerDUImplied !== null ? Math.round(duEquivalent * pricePerDUImplied) : null;
+                  return (
+                    <tr key={approach.id} className={approach.id === "classicalDevelopment" ? "baseline" : ""}>
+                      <td>{approach.label}</td>
+                      <td>{Math.round(approach.relativeEffort * 100)}%</td>
+                      <td>{duEquivalent !== null ? `~${duEquivalent} DU` : "–"}</td>
+                      {view === "internal" && <td>{approach.estimatedHours.toFixed(1)} Std.</td>}
+                      {view === "internal" && (
+                        <td>{priceEquivalent !== null ? `${priceEquivalent.toLocaleString("de-DE")} €` : "–"}</td>
+                      )}
+                      <td>{approach.rationale}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="report-section">
+          <h4>Vergleich: Umsetzungsansätze</h4>
+          <p className="report-note">
+            Für diese ältere Bewertung liegt noch kein Plattformvergleich vor (vor Einführung dieses Features
+            durchgeführt). Erneut bewerten, um ihn zu erhalten.
+          </p>
+        </div>
+      )}
 
       {suggestions.length > 0 && (
         <div className="report-section">

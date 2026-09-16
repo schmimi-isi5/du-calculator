@@ -16,6 +16,7 @@ import {
 import { DEFAULT_QUALITY_LEVEL, QUALITY_PROFILES } from "../domain/qualityLevels.js";
 import type { QualityLevel, RepositorySnapshot, Requirement, RequirementContext } from "../domain/types.js";
 import { buildResolvedContextParts, hasPendingClarifications } from "../scoring/clarificationGate.js";
+import { getSetting, SETTINGS_KEYS } from "../store/AppSettingsStore.js";
 import { store } from "../store/PostgresScoringStore.js";
 
 export class RequirementContextError extends Error {}
@@ -33,11 +34,20 @@ export type ModelSelection =
   | { kind: "auto" }
   | { kind: "default" };
 
-/** The model a request falls back to when it doesn't choose one at all (spec section 7) - not the same as an explicit "auto" pick (section 8), which runs the routing rule table instead. */
-export function defaultModelId(): string {
+/**
+ * The model a request falls back to when it doesn't choose one at all (spec
+ * section 7) - not the same as an explicit "auto" pick (section 8), which
+ * runs the routing rule table instead. An operator-set default (Einstellungen
+ * tab, persisted via AppSettingsStore) takes precedence over the
+ * DEFAULT_LLM_MODEL env var, which in turn seeds it if no override exists
+ * yet - either way, resolveDefaultModel still falls through its own chain if
+ * the configured id turns out to be unavailable.
+ */
+export async function defaultModelId(): Promise<string> {
+  const override = await getSetting(SETTINGS_KEYS.defaultModelId);
   return resolveDefaultModel(
     currentProviderCredentials(),
-    config.defaultLlmModel,
+    override ?? config.defaultLlmModel,
     config.allowPremiumAutoFallback,
     currentModelRegistry(),
   );
@@ -76,7 +86,9 @@ export async function runContextResolution(
   }
 
   const effectiveQualityLevel = existing?.qualityLevel ?? qualityLevel;
-  const effectiveModel = existing?.model ?? resolveModelSelection(modelSelection, effectiveQualityLevel, repositoryContext.omittedFileCount > 0, privacyMode);
+  const effectiveModel =
+    existing?.model ??
+    (await resolveModelSelection(modelSelection, effectiveQualityLevel, repositoryContext.omittedFileCount > 0, privacyMode));
   const profile = QUALITY_PROFILES[effectiveQualityLevel];
 
   const now = new Date().toISOString();
@@ -143,21 +155,21 @@ export async function runContextResolution(
  * selection, so a privacy-constrained request can never end up on a
  * zero-config cloud default.
  */
-export function resolveModelSelection(
+export async function resolveModelSelection(
   selection: ModelSelection,
   qualityLevel: QualityLevel,
   isLargeContext: boolean,
   privacyMode: "local-only" | undefined,
-): string {
+): Promise<string> {
   if (selection.kind === "explicit") return selection.modelId;
 
-  const credentials = currentProviderCredentials();
-  const registry = currentModelRegistry();
   if (selection.kind === "auto" || privacyMode === "local-only") {
+    const credentials = currentProviderCredentials();
+    const registry = currentModelRegistry();
     const criteria: AutoRoutingCriteria = { qualityLevel, isLargeContext, localOnly: privacyMode === "local-only" };
     return resolveAutoModel(criteria, credentials, config.allowPremiumAutoFallback, registry);
   }
-  return resolveDefaultModel(credentials, config.defaultLlmModel, config.allowPremiumAutoFallback, registry);
+  return defaultModelId();
 }
 
 /**

@@ -12,6 +12,7 @@ import {
 import { AIUsageDashboard } from "./components/AIUsageDashboard";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { ManagementReport } from "./components/ManagementReport";
+import { SettingsPanel } from "./components/SettingsPanel";
 import { RepositoryPanel } from "./components/RepositoryPanel";
 import { RepositoryPicker } from "./components/RepositoryPicker";
 import { RepositorySummaryBar } from "./components/RepositorySummaryBar";
@@ -37,7 +38,7 @@ function linesToList(value: string): string[] {
     .filter((line) => line.length > 0);
 }
 
-type Tab = "new" | "history" | "usage" | "report";
+type Tab = "new" | "history" | "usage" | "report" | "settings";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>("new");
@@ -277,6 +278,9 @@ export default function App() {
           <button className={activeTab === "report" ? "active" : ""} onClick={() => setActiveTab("report")}>
             Report
           </button>
+          <button className={activeTab === "settings" ? "active" : ""} onClick={() => setActiveTab("settings")}>
+            Einstellungen
+          </button>
         </div>
 
         {activeTab === "new" && (
@@ -445,6 +449,8 @@ export default function App() {
             {reportResult && <ManagementReport result={reportResult} />}
           </div>
         )}
+
+        {activeTab === "settings" && <SettingsPanel />}
       </main>
     </>
   );

@@ -736,12 +736,15 @@ code.file-path {
 
 .history-table th:nth-child(1),
 .history-table td:nth-child(1) {
-  width: 100px;
+  width: 120px;
 }
 
 .history-table th:nth-child(4),
 .history-table td:nth-child(4) {
-  width: 100px;
+  /* Must fit the longest status label ("Bewertet (mit Annahmen)") as one
+     pill without wrapping - too narrow here was the actual bug: the pill
+     didn't wrap, it just rendered past the column edge into Klasse. */
+  width: 172px;
 }
 
 .history-table th:nth-child(5),
@@ -756,7 +759,10 @@ code.file-path {
 
 .history-table th:nth-child(7),
 .history-table td:nth-child(7) {
-  width: 72px;
+  /* Wide enough for a five-figure price - XXL's extrapolated DU estimate
+     (domain/models.ts) can now produce noticeably larger prices than the
+     old fixed class table ever did. */
+  width: 80px;
 }
 
 .history-table th {
@@ -772,6 +778,13 @@ code.file-path {
   padding: 8px 10px;
   border-bottom: 1px solid #eef1f0;
   white-space: nowrap;
+  /* Defensive baseline for every column, not just the two free-text ones
+     with their own .history-cell-ellipsis span: table-layout: fixed gives
+     each column a hard pixel width, so anything that could still overflow
+     it (a pill, a wide locale-specific number format, ...) must be clipped
+     here rather than bleeding into the next column, which is exactly what
+     happened without this. */
+  overflow: hidden;
 }
 
 .history-table tbody tr {
