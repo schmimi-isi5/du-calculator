@@ -725,6 +725,38 @@ code.file-path {
   width: 100%;
   border-collapse: collapse;
   font-size: 12px;
+  /* Fixed layout + explicit widths on the short, bounded columns below lets
+     the two free-text columns (Requirement, Repository) share whatever
+     remains and truncate with an ellipsis - instead of every column
+     growing to its content's natural width and forcing the whole table
+     (and its .history-table-wrap scroll container) wider than the sidebar
+     layout leaves room for. */
+  table-layout: fixed;
+}
+
+.history-table th:nth-child(1),
+.history-table td:nth-child(1) {
+  width: 100px;
+}
+
+.history-table th:nth-child(4),
+.history-table td:nth-child(4) {
+  width: 100px;
+}
+
+.history-table th:nth-child(5),
+.history-table td:nth-child(5) {
+  width: 52px;
+}
+
+.history-table th:nth-child(6),
+.history-table td:nth-child(6) {
+  width: 44px;
+}
+
+.history-table th:nth-child(7),
+.history-table td:nth-child(7) {
+  width: 72px;
 }
 
 .history-table th {
@@ -754,6 +786,17 @@ code.file-path {
   background: var(--teal-tint);
 }
 
+.history-cell-ellipsis {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Also used by the (unrelated, non-fixed-layout) AI usage log table's
+   "Bezug" column - a simple max-width based ellipsis, unlike
+   .history-cell-ellipsis above which relies on .history-table's
+   table-layout: fixed column widths instead. */
 .history-repo {
   max-width: 260px;
   overflow: hidden;

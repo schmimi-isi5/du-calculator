@@ -68,9 +68,13 @@ export function HistoryPanel({ selectedId, onSelect, refreshToken }: Props) {
                     onClick={() => onSelect(entry.id)}
                   >
                     <td>{new Date(entry.createdAt).toLocaleString("de-DE")}</td>
-                    <td>{entry.requirementTitle}</td>
-                    <td className="history-repo">
-                      {entry.repositoryUrl.replace(/^https?:\/\//, "")} @ {entry.branch}
+                    <td title={entry.requirementTitle}>
+                      <span className="history-cell-ellipsis">{entry.requirementTitle}</span>
+                    </td>
+                    <td title={`${entry.repositoryUrl.replace(/^https?:\/\//, "")} @ ${entry.branch}`}>
+                      <span className="history-cell-ellipsis">
+                        {entry.repositoryUrl.replace(/^https?:\/\//, "")} @ {entry.branch}
+                      </span>
                     </td>
                     <td>
                       <span className={`status-pill ${meta.variant}`}>{meta.label}</span>
