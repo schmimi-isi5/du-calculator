@@ -32,6 +32,7 @@ export function RequirementContextPanel({ context, busy, onAnswerClarifications,
       <div className="actions" style={{ marginTop: 0, justifyContent: "space-between" }}>
         <h2 style={{ margin: 0 }}>Wissensstand zur Anforderung</h2>
         <span className="tag">{QUALITY_LEVEL_META[context.qualityLevel].label}</span>
+        <span className="tag">{context.model}</span>
       </div>
 
       {busy && (

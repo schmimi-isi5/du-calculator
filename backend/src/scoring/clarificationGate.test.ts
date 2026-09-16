@@ -274,6 +274,7 @@ function buildContext(overrides: Partial<RequirementContext> = {}): RequirementC
     snapshotId: "snap-1",
     requirement: { title: "t", description: "d", acceptanceCriteria: [], constraints: [] },
     qualityLevel: "standard",
+    model: "claude-opus-5",
     normalization: null,
     knownFacts: [],
     assumptions: [],

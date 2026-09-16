@@ -56,6 +56,8 @@ export default function App() {
   const [acceptanceCriteria, setAcceptanceCriteria] = useState("");
   const [constraints, setConstraints] = useState("");
   const [qualityLevel, setQualityLevel] = useState<QualityLevel>("standard");
+  const [model, setModel] = useState<string | null>(null);
+  const [privacyMode, setPrivacyMode] = useState<"local-only" | undefined>(undefined);
 
   const [requirementContext, setRequirementContext] = useState<RequirementContext | null>(null);
   const [contextLoading, setContextLoading] = useState(false);
@@ -133,6 +135,8 @@ export default function App() {
           constraints: linesToList(constraints),
         },
         qualityLevel,
+        model ?? undefined,
+        privacyMode,
       );
       setRequirementContext(context);
     } catch (err) {
@@ -190,6 +194,7 @@ export default function App() {
         requirementContextId: requirementContext.id,
         requirement: requirementContext.requirement,
         qualityLevel: requirementContext.qualityLevel,
+        model: requirementContext.model,
         status: "ERROR",
         impactAnalysis: null,
         dimensionScores: null,
@@ -295,6 +300,8 @@ export default function App() {
                   acceptanceCriteria={acceptanceCriteria}
                   constraints={constraints}
                   qualityLevel={qualityLevel}
+                  model={model}
+                  privacyMode={privacyMode}
                   canSubmit={canSubmitRequirement}
                   loading={contextLoading && !requirementContext}
                   onChangeTitle={setTitle}
@@ -302,6 +309,8 @@ export default function App() {
                   onChangeAcceptanceCriteria={setAcceptanceCriteria}
                   onChangeConstraints={setConstraints}
                   onChangeQualityLevel={setQualityLevel}
+                  onChangeModel={setModel}
+                  onChangePrivacyMode={setPrivacyMode}
                   onSubmit={handleResolveContext}
                 />
 

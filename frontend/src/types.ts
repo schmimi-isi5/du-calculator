@@ -102,6 +102,43 @@ export const QUALITY_LEVEL_META: Record<QualityLevel, QualityLevelMeta> = {
 
 export const QUALITY_LEVEL_ORDER: QualityLevel[] = ["quick", "standard", "thorough"];
 
+export type ModelCategory = "premium" | "balanced" | "budget" | "cost-performance" | "coding" | "local";
+
+export const MODEL_CATEGORY_LABELS: Record<ModelCategory, string> = {
+  premium: "Premium",
+  balanced: "Balanced",
+  budget: "Günstig",
+  "cost-performance": "Günstig · Coding",
+  coding: "Coding",
+  local: "Lokal",
+};
+
+/** One entry of the central Model Registry (see backend/src/domain/models.ts) this deployment can offer for per-requirement selection. */
+export interface SelectableModel {
+  id: string;
+  provider: AIProviderName;
+  displayName: string;
+  description: string;
+  category: ModelCategory;
+  local: boolean;
+  /** Whether THIS deployment has the provider credential configured - a model without it is shown but disabled, never hidden (spec: an unavailable local model must stay visible). */
+  available: boolean;
+  inputPricePerMillion?: number;
+  outputPricePerMillion?: number;
+}
+
+export interface SelectableModelsResponse {
+  autoModelId: string;
+  models: SelectableModel[];
+  default: string;
+}
+
+/** GET /api/ai-usage/ollama-status - live reachability of the local Ollama server, checked separately from the (static, config-only) SelectableModel.available flag. */
+export interface OllamaStatus {
+  reachable: boolean;
+  models: string[];
+}
+
 export interface ImpactAnalysis {
   existing: string[];
   reusable: string[];
@@ -163,6 +200,7 @@ export interface ScoringResult {
   requirementContextId: string | null;
   requirement: Requirement;
   qualityLevel: QualityLevel;
+  model: string;
   status: ScoringStatus;
   impactAnalysis: ImpactAnalysis | null;
   dimensionScores: DimensionScores | null;
@@ -251,6 +289,7 @@ export interface RequirementContext {
   snapshotId: string;
   requirement: Requirement;
   qualityLevel: QualityLevel;
+  model: string;
   normalization: RequirementNormalization | null;
   knownFacts: KnownFact[];
   assumptions: Assumption[];
@@ -286,7 +325,7 @@ export interface ScoringHistoryEntry {
 // AI usage & cost dashboard
 // ---------------------------------------------------------------------------
 
-export type AIProviderName = "anthropic" | "openai" | "openrouter" | "local";
+export type AIProviderName = "anthropic" | "openai" | "openrouter" | "local" | "deepseek" | "google" | "qwen" | "ollama";
 
 export interface AIUsageBreakdownEntry {
   key: string;

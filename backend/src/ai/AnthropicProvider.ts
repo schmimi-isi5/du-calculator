@@ -22,6 +22,7 @@ import type {
 import { QUALITY_PROFILES, type EffortLevel } from "../domain/qualityLevels.js";
 import type { AIProvider, RepositoryIdentity, ResolvedRequirementKnowledge, UsageContext } from "./AIProvider.js";
 import { AIProviderError } from "./AIProvider.js";
+import { mapAnthropicError } from "./llmErrors.js";
 import {
   buildAssessmentPrompt,
   buildContextResolutionPrompt,
@@ -52,11 +53,11 @@ const CACHE_TTL = "1h" as const;
 
 export class AnthropicProvider implements AIProvider {
   private readonly client: Anthropic;
-  private readonly model: string;
+  private readonly defaultModel: string;
 
   constructor(apiKey: string, model: string = DEFAULT_MODEL) {
     this.client = new Anthropic({ apiKey });
-    this.model = model;
+    this.defaultModel = model;
   }
 
   async analyzeRepository(
@@ -69,6 +70,7 @@ export class AnthropicProvider implements AIProvider {
       prompt,
       RepositoryProfileSchema,
       "analyzeRepository",
+      this.defaultModel,
       REPOSITORY_ANALYSIS_EFFORT,
       usage,
     );
@@ -80,6 +82,7 @@ export class AnthropicProvider implements AIProvider {
     context: RepositoryContext,
     answeredClarifications: Clarification[],
     qualityLevel: QualityLevel,
+    model: string,
     usage: UsageContext,
   ): Promise<ContextResolutionOutput> {
     const prompt = buildContextResolutionPrompt(requirement, profile, context, answeredClarifications, qualityLevel);
@@ -87,6 +90,7 @@ export class AnthropicProvider implements AIProvider {
       prompt,
       ContextResolutionOutputSchema,
       "resolveRequirementContext",
+      model,
       QUALITY_PROFILES[qualityLevel].resolutionEffort,
       usage,
     );
@@ -98,6 +102,7 @@ export class AnthropicProvider implements AIProvider {
     context: RepositoryContext,
     knowledge: ResolvedRequirementKnowledge,
     qualityLevel: QualityLevel,
+    model: string,
     usage: UsageContext,
   ): Promise<RequirementAssessment> {
     const prompt = buildAssessmentPrompt(requirement, profile, context, knowledge, qualityLevel);
@@ -105,6 +110,7 @@ export class AnthropicProvider implements AIProvider {
       prompt,
       RequirementAssessmentSchema,
       "assessRequirement",
+      model,
       QUALITY_PROFILES[qualityLevel].assessmentEffort,
       usage,
     );
@@ -114,6 +120,7 @@ export class AnthropicProvider implements AIProvider {
     prompt: PromptParts,
     schema: Parameters<typeof betaZodOutputFormat>[0],
     step: string,
+    model: string,
     effort: EffortLevel,
     usage: UsageContext,
   ): Promise<T> {
@@ -128,7 +135,7 @@ export class AnthropicProvider implements AIProvider {
       // this known type/API drift, not a general bypass - remove it once
       // the SDK ships matching types.
       const response = await this.client.beta.messages.parse({
-        model: this.model,
+        model,
         max_tokens: MAX_TOKENS,
         thinking: { type: "adaptive" },
         output_config: { effort },
@@ -148,7 +155,7 @@ export class AnthropicProvider implements AIProvider {
       if (response.usage) {
         await recordUsage(
           "anthropic",
-          response.model ?? this.model,
+          response.model ?? model,
           step,
           {
             inputTokens: response.usage.input_tokens,
@@ -162,31 +169,19 @@ export class AnthropicProvider implements AIProvider {
       }
 
       if (response.stop_reason === "refusal") {
-        throw new AIProviderError(`AI provider refused the ${step} request for safety reasons.`);
+        throw new AIProviderError(`AI provider refused the ${step} request for safety reasons.`, "invalid_request");
       }
 
       if (!response.parsed_output) {
         throw new AIProviderError(
           `AI provider response for ${step} could not be parsed into the expected structure.`,
+          "unknown_provider_error",
         );
       }
 
       return response.parsed_output as T;
     } catch (err) {
-      if (err instanceof AIProviderError) throw err;
-      if (err instanceof Anthropic.AuthenticationError) {
-        throw new AIProviderError(
-          "AI provider authentication failed. Check that ANTHROPIC_API_KEY is set correctly.",
-          err,
-        );
-      }
-      if (err instanceof Anthropic.RateLimitError) {
-        throw new AIProviderError("AI provider rate limit exceeded. Try again shortly.", err);
-      }
-      if (err instanceof Anthropic.APIError) {
-        throw new AIProviderError(`AI provider request for ${step} failed: ${err.message}`, err);
-      }
-      throw new AIProviderError(`AI provider request for ${step} failed unexpectedly.`, err);
+      throw mapAnthropicError(err, step);
     }
   }
 }

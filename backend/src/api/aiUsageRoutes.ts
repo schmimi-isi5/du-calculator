@@ -1,8 +1,13 @@
 import type { Response } from "express";
 import { Router } from "express";
+import { currentProviderCredentials } from "../ai/providerAvailability.js";
 import { config } from "../config.js";
+import { AUTO_MODEL_ID, isModelConfigured, MODEL_REGISTRY } from "../domain/models.js";
 import { aiUsageStore } from "../store/AIUsageStore.js";
 import { asyncHandler } from "./asyncHandler.js";
+import { defaultModelId } from "./requirementContextService.js";
+
+const OLLAMA_STATUS_TIMEOUT_MS = 3000;
 
 export const aiUsageRouter = Router();
 
@@ -60,3 +65,43 @@ aiUsageRouter.get("/config", (_req, res) => {
     model: config.aiModel ?? "(provider default)",
   });
 });
+
+// The full Model Registry (spec: Model Registry), each entry annotated with
+// whether THIS deployment can actually call it right now - `available`
+// reflects configuration (an API key present, or "ollama" needing none),
+// not live reachability, which the frontend checks separately via
+// /ollama-status for the local model specifically (spec section 10: "Ein
+// nicht verfügbares lokales Modell soll in der UI entsprechend markiert
+// werden").
+aiUsageRouter.get("/models", (_req, res) => {
+  const credentials = currentProviderCredentials();
+  res.status(200).json({
+    autoModelId: AUTO_MODEL_ID,
+    models: MODEL_REGISTRY.filter((m) => m.enabled).map((m) => ({ ...m, available: isModelConfigured(m, credentials) })),
+    default: defaultModelId(),
+  });
+});
+
+// Live reachability check for the local Ollama server (spec section 10) -
+// deliberately not part of /models above, since it's a network call with
+// its own latency/failure mode and the registry entry's "available" flag
+// must stay a cheap, synchronous, configuration-only check.
+aiUsageRouter.get(
+  "/ollama-status",
+  asyncHandler(async (_req, res) => {
+    try {
+      const response = await fetch(`${config.ollamaBaseUrl.replace(/\/$/, "")}/api/tags`, {
+        signal: AbortSignal.timeout(OLLAMA_STATUS_TIMEOUT_MS),
+      });
+      if (!response.ok) {
+        res.status(200).json({ reachable: false, models: [] });
+        return;
+      }
+      const body = (await response.json()) as { models?: { name?: string }[] };
+      const models = Array.isArray(body.models) ? body.models.map((m) => m.name).filter((n): n is string => !!n) : [];
+      res.status(200).json({ reachable: true, models });
+    } catch {
+      res.status(200).json({ reachable: false, models: [] });
+    }
+  }),
+);

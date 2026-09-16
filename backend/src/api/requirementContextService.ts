@@ -4,7 +4,15 @@
 // that needs a fresh or updated RequirementContext goes through here, so
 // "run resolution, then persist" only happens in one place.
 
-import { getAIProvider } from "../ai/getAIProvider.js";
+import { getAIProviderForModel } from "../ai/getAIProvider.js";
+import { currentProviderCredentials } from "../ai/providerAvailability.js";
+import { config } from "../config.js";
+import {
+  getModelById,
+  resolveAutoModel,
+  resolveDefaultModel,
+  type AutoRoutingCriteria,
+} from "../domain/models.js";
 import { DEFAULT_QUALITY_LEVEL, QUALITY_PROFILES } from "../domain/qualityLevels.js";
 import type { QualityLevel, RepositorySnapshot, Requirement, RequirementContext } from "../domain/types.js";
 import { buildResolvedContextParts, hasPendingClarifications } from "../scoring/clarificationGate.js";
@@ -13,22 +21,42 @@ import { store } from "../store/PostgresScoringStore.js";
 export class RequirementContextError extends Error {}
 
 /**
+ * What the client asked for regarding model choice - resolved to a concrete
+ * registry id inside runContextResolution, which is the one place that has
+ * the repository context Auto-routing needs (see domain/models.ts
+ * AutoRoutingCriteria.isLargeContext). "explicit"/"auto" are only ever
+ * constructed by requirementContextRoutes.ts after validating against the
+ * registry, so runContextResolution can trust modelId is real.
+ */
+export type ModelSelection =
+  | { kind: "explicit"; modelId: string }
+  | { kind: "auto" }
+  | { kind: "default" };
+
+/** The model a request falls back to when it doesn't choose one at all (spec section 7) - not the same as an explicit "auto" pick (section 8), which runs the routing rule table instead. */
+export function defaultModelId(): string {
+  return resolveDefaultModel(currentProviderCredentials(), config.defaultLlmModel, config.allowPremiumAutoFallback);
+}
+
+/**
  * Runs one round of context resolution: calls the AI to (re-)classify
  * information given everything answered so far, applies the deterministic
  * clarification gate, and persists the result. Reused for the initial
  * resolution, after a clarification answer, and after an assumption is
  * rejected (all three can surface a fresh or updated set of questions).
  *
- * `qualityLevel` only matters on the very first call (existing === null) -
- * it is fixed on the RequirementContext from then on and every later round
- * reuses it, so a run never drifts between depths partway through (see
- * domain/types.ts QualityLevel).
+ * `qualityLevel`/`modelSelection` only matter on the very first call
+ * (existing === null) - the resolved model is fixed on the
+ * RequirementContext from then on and every later round reuses it, so a run
+ * never drifts partway through (see domain/types.ts QualityLevel).
  */
 export async function runContextResolution(
   snapshotId: string,
   requirement: Requirement,
   existing: RequirementContext | null,
   qualityLevel: QualityLevel = DEFAULT_QUALITY_LEVEL,
+  modelSelection: ModelSelection = { kind: "default" },
+  privacyMode?: "local-only",
 ): Promise<RequirementContext> {
   const snapshot = await store.getSnapshot(snapshotId);
   if (!snapshot || snapshot.status !== "SNAPSHOT_CREATED" || !snapshot.profile) {
@@ -43,6 +71,7 @@ export async function runContextResolution(
   }
 
   const effectiveQualityLevel = existing?.qualityLevel ?? qualityLevel;
+  const effectiveModel = existing?.model ?? resolveModelSelection(modelSelection, effectiveQualityLevel, repositoryContext.omittedFileCount > 0, privacyMode);
   const profile = QUALITY_PROFILES[effectiveQualityLevel];
 
   const now = new Date().toISOString();
@@ -59,13 +88,18 @@ export async function runContextResolution(
   // clarificationGate.ts buildResolvedContextParts.
   const maxNewClarifications = priorRounds < profile.maxResolutionRounds ? profile.maxClarificationsPerRound : 0;
 
-  const aiProvider = getAIProvider();
+  const modelEntry = getModelById(effectiveModel);
+  if (!modelEntry) {
+    throw new RequirementContextError(`Unknown model "${effectiveModel}".`);
+  }
+  const aiProvider = getAIProviderForModel(modelEntry);
   const output = await aiProvider.resolveRequirementContext(
     requirement,
     snapshot.profile as NonNullable<RepositorySnapshot["profile"]>,
     repositoryContext,
     answered,
     effectiveQualityLevel,
+    effectiveModel,
     { snapshotId, requirementContextId: contextId },
   );
 
@@ -76,6 +110,7 @@ export async function runContextResolution(
     snapshotId,
     requirement,
     qualityLevel: effectiveQualityLevel,
+    model: effectiveModel,
     normalization: output.normalization,
     knownFacts: parts.knownFacts,
     assumptions: mergeAssumptionDecisions(parts.assumptions, existing?.assumptions ?? []),
@@ -90,6 +125,33 @@ export async function runContextResolution(
 
   await store.saveRequirementContext(context);
   return context;
+}
+
+/**
+ * Turns a client's model choice into a concrete registry id. "auto" and
+ * "default" (spec sections 7/8) are genuinely different mechanisms - auto
+ * runs the deterministic routing rule table against this run's actual
+ * signals, default just walks a fixed fallback chain - so they are kept
+ * distinct rather than collapsing "nothing chosen" into "auto".
+ * `privacyMode: "local-only"` always routes through the rule table (forcing
+ * the local model, no cloud fallback), even for an otherwise-"default"
+ * selection, so a privacy-constrained request can never end up on a
+ * zero-config cloud default.
+ */
+export function resolveModelSelection(
+  selection: ModelSelection,
+  qualityLevel: QualityLevel,
+  isLargeContext: boolean,
+  privacyMode: "local-only" | undefined,
+): string {
+  if (selection.kind === "explicit") return selection.modelId;
+
+  const credentials = currentProviderCredentials();
+  if (selection.kind === "auto" || privacyMode === "local-only") {
+    const criteria: AutoRoutingCriteria = { qualityLevel, isLargeContext, localOnly: privacyMode === "local-only" };
+    return resolveAutoModel(criteria, credentials, config.allowPremiumAutoFallback);
+  }
+  return resolveDefaultModel(credentials, config.defaultLlmModel, config.allowPremiumAutoFallback);
 }
 
 /**

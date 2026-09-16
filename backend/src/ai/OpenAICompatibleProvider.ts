@@ -30,6 +30,7 @@ import type {
 } from "../domain/types.js";
 import type { AIProvider, RepositoryIdentity, ResolvedRequirementKnowledge, UsageContext } from "./AIProvider.js";
 import { AIProviderError } from "./AIProvider.js";
+import { mapOpenAICompatibleError } from "./llmErrors.js";
 import {
   buildAssessmentPrompt,
   buildContextResolutionPrompt,
@@ -40,8 +41,8 @@ import { toOpenAIStrictJsonSchema } from "./openAIStrictSchema.js";
 import { recordUsage } from "./usageTracker.js";
 
 export interface OpenAICompatibleProviderOptions {
-  /** Which AIProviderName this instance reports to the usage log - "openai" | "openrouter" | "local". */
-  providerName: Extract<AIProviderName, "openai" | "openrouter" | "local">;
+  /** Which AIProviderName this instance reports to the usage log. */
+  providerName: Extract<AIProviderName, "openai" | "openrouter" | "local" | "deepseek" | "google" | "qwen" | "ollama">;
   apiKey: string;
   /** Omit to use the real OpenAI API; set for OpenRouter or a local server. */
   baseURL?: string;
@@ -57,7 +58,7 @@ const REQUEST_TIMEOUT_MS = 900_000;
 export class OpenAICompatibleProvider implements AIProvider {
   private readonly client: OpenAI;
   private readonly providerName: OpenAICompatibleProviderOptions["providerName"];
-  private readonly model: string;
+  private readonly defaultModel: string;
 
   constructor(options: OpenAICompatibleProviderOptions) {
     // Node's global fetch enforces its own independent response-header and
@@ -82,7 +83,7 @@ export class OpenAICompatibleProvider implements AIProvider {
       },
     });
     this.providerName = options.providerName;
-    this.model = options.model;
+    this.defaultModel = options.model;
   }
 
   async analyzeRepository(
@@ -95,6 +96,7 @@ export class OpenAICompatibleProvider implements AIProvider {
       prompt,
       RepositoryProfileSchema,
       "analyzeRepository",
+      this.defaultModel,
       "RepositoryProfile",
       usageContext,
     );
@@ -106,6 +108,7 @@ export class OpenAICompatibleProvider implements AIProvider {
     context: RepositoryContext,
     answeredClarifications: Clarification[],
     qualityLevel: QualityLevel,
+    model: string,
     usageContext: UsageContext,
   ): Promise<ContextResolutionOutput> {
     const prompt = buildContextResolutionPrompt(requirement, profile, context, answeredClarifications, qualityLevel);
@@ -113,6 +116,7 @@ export class OpenAICompatibleProvider implements AIProvider {
       prompt,
       ContextResolutionOutputSchema,
       "resolveRequirementContext",
+      model,
       "ContextResolutionOutput",
       usageContext,
     );
@@ -124,6 +128,7 @@ export class OpenAICompatibleProvider implements AIProvider {
     context: RepositoryContext,
     knowledge: ResolvedRequirementKnowledge,
     qualityLevel: QualityLevel,
+    model: string,
     usageContext: UsageContext,
   ): Promise<RequirementAssessment> {
     const prompt = buildAssessmentPrompt(requirement, profile, context, knowledge, qualityLevel);
@@ -131,6 +136,7 @@ export class OpenAICompatibleProvider implements AIProvider {
       prompt,
       RequirementAssessmentSchema,
       "assessRequirement",
+      model,
       "RequirementAssessment",
       usageContext,
     );
@@ -140,12 +146,13 @@ export class OpenAICompatibleProvider implements AIProvider {
     prompt: PromptParts,
     schema: ZodType<T>,
     step: string,
+    model: string,
     schemaName: string,
     usageContext: UsageContext,
   ): Promise<T> {
     try {
       const response = await this.client.chat.completions.create({
-        model: this.model,
+        model,
         messages: [
           { role: "system", content: prompt.system },
           { role: "user", content: `${prompt.stableContext}\n\n${prompt.volatile}` },
@@ -165,7 +172,7 @@ export class OpenAICompatibleProvider implements AIProvider {
         const cachedTokens = usage.prompt_tokens_details?.cached_tokens ?? 0;
         await recordUsage(
           this.providerName,
-          response.model ?? this.model,
+          response.model ?? model,
           step,
           {
             inputTokens: Math.max(usage.prompt_tokens - cachedTokens, 0),
@@ -180,40 +187,31 @@ export class OpenAICompatibleProvider implements AIProvider {
 
       const message = response.choices[0]?.message;
       if (message?.refusal) {
-        throw new AIProviderError(`AI provider refused the ${step} request: ${message.refusal}`);
+        throw new AIProviderError(`AI provider refused the ${step} request: ${message.refusal}`, "invalid_request");
       }
       if (!message?.content) {
-        throw new AIProviderError(`AI provider response for ${step} contained no content.`);
+        throw new AIProviderError(`AI provider response for ${step} contained no content.`, "unknown_provider_error");
       }
 
       let parsedJson: unknown;
       try {
         parsedJson = JSON.parse(message.content);
       } catch (err) {
-        throw new AIProviderError(`AI provider response for ${step} was not valid JSON.`, err);
+        throw new AIProviderError(`AI provider response for ${step} was not valid JSON.`, "unknown_provider_error", err);
       }
 
       const parsed = schema.safeParse(parsedJson);
       if (!parsed.success) {
         throw new AIProviderError(
           `AI provider response for ${step} could not be parsed into the expected structure.`,
+          "unknown_provider_error",
           parsed.error,
         );
       }
 
       return parsed.data;
     } catch (err) {
-      if (err instanceof AIProviderError) throw err;
-      if (err instanceof OpenAI.AuthenticationError) {
-        throw new AIProviderError(`AI provider authentication failed for ${this.providerName}.`, err);
-      }
-      if (err instanceof OpenAI.RateLimitError) {
-        throw new AIProviderError("AI provider rate limit exceeded. Try again shortly.", err);
-      }
-      if (err instanceof OpenAI.APIError) {
-        throw new AIProviderError(`AI provider request for ${step} failed: ${err.message}`, err);
-      }
-      throw new AIProviderError(`AI provider request for ${step} failed unexpectedly.`, err);
+      throw mapOpenAICompatibleError(err, step, this.providerName);
     }
   }
 }

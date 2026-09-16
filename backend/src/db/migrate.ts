@@ -61,6 +61,11 @@ ALTER TABLE requirement_contexts ADD COLUMN IF NOT EXISTS resolution_rounds INTE
 -- Existing rows default to 'standard', the level all of them were actually
 -- run at before this column existed.
 ALTER TABLE requirement_contexts ADD COLUMN IF NOT EXISTS quality_level TEXT NOT NULL DEFAULT 'standard';
+-- Which model (see domain/models.ts) this context is resolved with - fixed
+-- for the context's whole lifetime, same as quality_level. Existing rows
+-- default to claude-opus-5, the only model ever used before this column
+-- existed.
+ALTER TABLE requirement_contexts ADD COLUMN IF NOT EXISTS model TEXT NOT NULL DEFAULT 'claude-opus-5';
 
 CREATE TABLE IF NOT EXISTS scoring_results (
   id UUID PRIMARY KEY,
@@ -88,6 +93,9 @@ ALTER TABLE scoring_results ADD COLUMN IF NOT EXISTS assumptions_used JSONB NOT 
 -- to 'standard', the level all of them were actually run at before this
 -- column existed.
 ALTER TABLE scoring_results ADD COLUMN IF NOT EXISTS quality_level TEXT NOT NULL DEFAULT 'standard';
+-- Which model produced this assessment - existing rows default to
+-- claude-opus-5, the only model ever used before this column existed.
+ALTER TABLE scoring_results ADD COLUMN IF NOT EXISTS model TEXT NOT NULL DEFAULT 'claude-opus-5';
 
 CREATE INDEX IF NOT EXISTS idx_scoring_results_created_at ON scoring_results (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_scoring_results_snapshot_id ON scoring_results (snapshot_id);
