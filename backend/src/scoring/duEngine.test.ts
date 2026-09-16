@@ -14,6 +14,7 @@ import {
 } from "./duEngine.js";
 
 const HOURS_PER_DU = 6;
+const BILLING_RATE_PER_HOUR = 160;
 
 function buildScores(
   overrides: Partial<Record<DimensionKey, { score: 1 | 2 | 3 | 4 | 5; confidence: number }>> = {},
@@ -119,16 +120,16 @@ describe("estimateXXLDevelopmentUnits", () => {
 });
 
 describe("calculatePrice", () => {
-  it("multiplies development units by price per DU", () => {
-    expect(calculatePrice(4, 300)).toBe(1200);
+  it("multiplies total estimated hours by the billing rate per hour", () => {
+    expect(calculatePrice(36, 160)).toBe(5760);
   });
 
-  it("returns null when development units is null (XXL / decomposition required)", () => {
-    expect(calculatePrice(null, 300)).toBeNull();
+  it("returns null when total hours is null", () => {
+    expect(calculatePrice(null, 160)).toBeNull();
   });
 
-  it("returns null when no price per DU is configured", () => {
-    expect(calculatePrice(4, null)).toBeNull();
+  it("returns null when no billing rate is configured", () => {
+    expect(calculatePrice(36, null)).toBeNull();
   });
 });
 
@@ -172,12 +173,13 @@ describe("computeDuResult", () => {
     const scores = buildScores(
       Object.fromEntries(DIMENSION_KEYS.map((k) => [k, { score: 3, confidence: 0.9 }])) as never,
     );
-    const result = computeDuResult(scores, 300, HOURS_PER_DU);
+    const result = computeDuResult(scores, BILLING_RATE_PER_HOUR, HOURS_PER_DU);
 
     expect(result.weightedScore).toBe(3.0);
     expect(result.duClass).toBe("L");
     expect(result.developmentUnits).toBe(6);
-    expect(result.price).toBe(1800);
+    // price = totalHours (6 DU * 6h/DU = 36h) * billing rate (160/h)
+    expect(result.price).toBe(36 * BILLING_RATE_PER_HOUR);
     expect(result.overallConfidence).toBe(0.9);
     expect(result.confidenceLevel).toBe("HIGH");
     expect(result.isRoughEstimate).toBe(false);
@@ -187,11 +189,12 @@ describe("computeDuResult", () => {
     const scores = buildScores(
       Object.fromEntries(DIMENSION_KEYS.map((k) => [k, { score: 5, confidence: 0.9 }])) as never,
     );
-    const result = computeDuResult(scores, 300, HOURS_PER_DU);
+    const result = computeDuResult(scores, BILLING_RATE_PER_HOUR, HOURS_PER_DU);
 
     expect(result.duClass).toBe("XXL");
     expect(result.developmentUnits).toBe(19);
-    expect(result.price).toBe(19 * 300);
+    // price = totalHours (19 DU * 6h/DU = 114h) * billing rate (160/h)
+    expect(result.price).toBe(114 * BILLING_RATE_PER_HOUR);
     expect(result.isRoughEstimate).toBe(true);
   });
 
@@ -199,7 +202,7 @@ describe("computeDuResult", () => {
     const scores = buildScores(
       Object.fromEntries(DIMENSION_KEYS.map((k) => [k, { score: 3, confidence: 0.4 }])) as never,
     );
-    const result = computeDuResult(scores, 300, HOURS_PER_DU);
+    const result = computeDuResult(scores, BILLING_RATE_PER_HOUR, HOURS_PER_DU);
 
     expect(result.confidenceLevel).toBe("LOW");
   });
@@ -208,7 +211,7 @@ describe("computeDuResult", () => {
     const scores = buildScores(
       Object.fromEntries(DIMENSION_KEYS.map((k) => [k, { score: 3, confidence: 0.9 }])) as never,
     );
-    const result = computeDuResult(scores, 300, HOURS_PER_DU);
+    const result = computeDuResult(scores, BILLING_RATE_PER_HOUR, HOURS_PER_DU);
 
     expect(result.timeEstimate.hoursPerDU).toBe(HOURS_PER_DU);
     expect(result.timeEstimate.totalHours).toBe(6 * HOURS_PER_DU);
@@ -222,7 +225,7 @@ describe("computeDuResult", () => {
     const scores = buildScores(
       Object.fromEntries(DIMENSION_KEYS.map((k) => [k, { score: 3, confidence: 0.9 }])) as never,
     );
-    const result = computeDuResult(scores, 300, HOURS_PER_DU);
+    const result = computeDuResult(scores, BILLING_RATE_PER_HOUR, HOURS_PER_DU);
 
     expect(result.alternativeApproaches.map((a) => a.id)).toEqual([
       "classicalDevelopment",
@@ -233,6 +236,23 @@ describe("computeDuResult", () => {
     const classical = result.alternativeApproaches[0]!;
     expect(classical.relativeEffort).toBe(1);
     expect(classical.estimatedHours).toBe(result.timeEstimate.totalHours);
+  });
+
+  it("never prices a requirement below the configured billing rate per hour, regardless of DU class", () => {
+    // Regression test: price used to be an independent PRICE_PER_DU value
+    // unrelated to the time estimate - at its old default (300) with the
+    // old default hoursPerDU (6), that implied only 50 €/h, far under any
+    // real billing rate. Deriving price from hours * billingRatePerHour
+    // makes the implied rate always exactly equal to the configured rate,
+    // for every DU class from XS to XXL.
+    for (const score of [1.0, 1.8, 2.5, 3.2, 4.0, 4.9]) {
+      const scores = buildScores(
+        Object.fromEntries(DIMENSION_KEYS.map((k) => [k, { score: Math.round(score) as 1 | 2 | 3 | 4 | 5, confidence: 0.9 }])) as never,
+      );
+      const result = computeDuResult(scores, BILLING_RATE_PER_HOUR, HOURS_PER_DU);
+      const impliedRate = result.price! / result.timeEstimate.totalHours;
+      expect(impliedRate).toBeCloseTo(BILLING_RATE_PER_HOUR, 5);
+    }
   });
 });
 
@@ -248,23 +268,23 @@ describe("determineScoringStatus", () => {
   );
 
   it("returns SCORED when confident, in-range, and no assumptions were used", () => {
-    const result = computeDuResult(highConfidenceScores, 300, HOURS_PER_DU);
+    const result = computeDuResult(highConfidenceScores, BILLING_RATE_PER_HOUR, HOURS_PER_DU);
     expect(determineScoringStatus(result, 0)).toBe("SCORED");
   });
 
   it("returns ASSESSMENT_WITH_ASSUMPTIONS when confident and in-range but assumptions were relied on", () => {
-    const result = computeDuResult(highConfidenceScores, 300, HOURS_PER_DU);
+    const result = computeDuResult(highConfidenceScores, BILLING_RATE_PER_HOUR, HOURS_PER_DU);
     expect(determineScoringStatus(result, 3)).toBe("ASSESSMENT_WITH_ASSUMPTIONS");
   });
 
   it("returns DECOMPOSITION_REQUIRED for XXL regardless of assumptions used", () => {
-    const result = computeDuResult(xxlScores, 300, HOURS_PER_DU);
+    const result = computeDuResult(xxlScores, BILLING_RATE_PER_HOUR, HOURS_PER_DU);
     expect(determineScoringStatus(result, 0)).toBe("DECOMPOSITION_REQUIRED");
     expect(determineScoringStatus(result, 2)).toBe("DECOMPOSITION_REQUIRED");
   });
 
   it("returns NEEDS_CLARIFICATION for LOW confidence even when assumptions were used - assumptions never mask low confidence", () => {
-    const result = computeDuResult(lowConfidenceScores, 300, HOURS_PER_DU);
+    const result = computeDuResult(lowConfidenceScores, BILLING_RATE_PER_HOUR, HOURS_PER_DU);
     expect(determineScoringStatus(result, 0)).toBe("NEEDS_CLARIFICATION");
     expect(determineScoringStatus(result, 5)).toBe("NEEDS_CLARIFICATION");
   });

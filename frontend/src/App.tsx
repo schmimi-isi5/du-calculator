@@ -38,7 +38,7 @@ function linesToList(value: string): string[] {
     .filter((line) => line.length > 0);
 }
 
-type Tab = "new" | "history" | "usage" | "report" | "settings";
+type Tab = "new" | "history" | "usage" | "settings";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>("new");
@@ -73,11 +73,11 @@ export default function App() {
   const [historyResult, setHistoryResult] = useState<ScoringResult | null>(null);
   const [historyDetailLoading, setHistoryDetailLoading] = useState(false);
   const [historyDetailError, setHistoryDetailError] = useState<string | null>(null);
-
-  const [reportSelectedId, setReportSelectedId] = useState<string | null>(null);
-  const [reportResult, setReportResult] = useState<ScoringResult | null>(null);
-  const [reportLoading, setReportLoading] = useState(false);
-  const [reportError, setReportError] = useState<string | null>(null);
+  // One selected requirement, multiple views on it - Management-Report
+  // (customer/internal toggle lives inside that component) and the full
+  // technical dimension-by-dimension breakdown, instead of two separate
+  // top-level tabs each re-implementing the same "pick from history" list.
+  const [historyDetailView, setHistoryDetailView] = useState<"report" | "scoring">("report");
 
   const isRepositoryReady = snapshot?.status === "SNAPSHOT_CREATED";
   const isContextResolved = requirementContext?.status === "RESOLVED";
@@ -233,21 +233,6 @@ export default function App() {
     }
   }
 
-  async function handleSelectReportEntry(id: string) {
-    setReportSelectedId(id);
-    setReportLoading(true);
-    setReportError(null);
-    setReportResult(null);
-    try {
-      const result = await getScoringResult(id);
-      setReportResult(result);
-    } catch (err) {
-      setReportError(err instanceof ApiError ? err.message : "Unerwarteter Fehler.");
-    } finally {
-      setReportLoading(false);
-    }
-  }
-
   const canSubmitRequirement =
     isRepositoryReady && !contextLoading && title.trim().length > 0 && description.trim().length > 0;
 
@@ -274,9 +259,6 @@ export default function App() {
           </button>
           <button className={activeTab === "usage" ? "active" : ""} onClick={() => setActiveTab("usage")}>
             KI-Kosten
-          </button>
-          <button className={activeTab === "report" ? "active" : ""} onClick={() => setActiveTab("report")}>
-            Report
           </button>
           <button className={activeTab === "settings" ? "active" : ""} onClick={() => setActiveTab("settings")}>
             Einstellungen
@@ -410,45 +392,60 @@ export default function App() {
         )}
 
         {activeTab === "history" && (
-          <div className="grid">
-            <section>
-              <HistoryPanel
-                selectedId={historySelectedId}
-                onSelect={handleSelectHistoryEntry}
-                refreshToken={historyRefreshToken}
-              />
+          <div className="wizard-single-column">
+            <HistoryPanel
+              selectedId={historySelectedId}
+              onSelect={handleSelectHistoryEntry}
+              refreshToken={historyRefreshToken}
+            />
 
-              {historyDetailError && <div className="notice error">{historyDetailError}</div>}
+            {historyDetailError && <div className="notice error">{historyDetailError}</div>}
 
-              {historySelectedId && (
-                <ScoringPanel
-                  loading={historyDetailLoading}
-                  result={historyResult}
-                  language={language}
-                  onChangeLanguage={setLanguage}
-                />
-              )}
-            </section>
+            {historySelectedId && (
+              <>
+                <div className="tabs" style={{ marginBottom: 0 }}>
+                  <button
+                    className={historyDetailView === "report" ? "active" : ""}
+                    onClick={() => setHistoryDetailView("report")}
+                  >
+                    Management-Report
+                  </button>
+                  <button
+                    className={historyDetailView === "scoring" ? "active" : ""}
+                    onClick={() => setHistoryDetailView("scoring")}
+                  >
+                    Detaillierte Bewertung
+                  </button>
+                </div>
 
-            <aside>{historySelectedId && <ResultHero result={historyResult} />}</aside>
+                {historyDetailView === "report" &&
+                  (historyResult ? (
+                    <ManagementReport result={historyResult} />
+                  ) : (
+                    historyDetailLoading && <p style={{ fontSize: 13, color: "var(--muted)" }}>Lade Bewertung…</p>
+                  ))}
+
+                {historyDetailView === "scoring" && (
+                  <div className="grid">
+                    <section>
+                      <ScoringPanel
+                        loading={historyDetailLoading}
+                        result={historyResult}
+                        language={language}
+                        onChangeLanguage={setLanguage}
+                      />
+                    </section>
+                    <aside>
+                      <ResultHero result={historyResult} />
+                    </aside>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
 
         {activeTab === "usage" && <AIUsageDashboard />}
-
-        {activeTab === "report" && (
-          <div className="wizard-single-column">
-            <HistoryPanel
-              selectedId={reportSelectedId}
-              onSelect={handleSelectReportEntry}
-              refreshToken={historyRefreshToken}
-            />
-
-            {reportError && <div className="notice error">{reportError}</div>}
-            {reportLoading && <p style={{ fontSize: 13, color: "var(--muted)" }}>Lade Bewertung…</p>}
-            {reportResult && <ManagementReport result={reportResult} />}
-          </div>
-        )}
 
         {activeTab === "settings" && <SettingsPanel />}
       </main>

@@ -97,7 +97,7 @@ requirementRouter.post("/score", asyncHandler(async (req, res) => {
       requirementContext.model,
       usageContext,
     );
-    const engineResult = computeDuResult(assessment.dimensions, config.pricePerDU, config.hoursPerDU);
+    const engineResult = computeDuResult(assessment.dimensions, config.billingRatePerHour, config.hoursPerDU);
 
     // Only assumptions that are actually still active may count - a score
     // that cites a rejected assumption's id is a modeling bug, not a valid

@@ -178,26 +178,36 @@ export function ManagementReport({ result }: Props) {
 
       {view === "internal" && du.timeEstimate && (
         <div className="report-section">
-          <h4>Interner Aufwand (Schätzung)</h4>
+          <h4>Interner Personalaufwand (Schätzung)</h4>
+          <p className="report-note" style={{ marginBottom: 10 }}>
+            Beide Werte sind Personalzeit (Mitarbeiter), keine KI-Rechenzeit - die KI selbst "kostet" hier keine
+            Stunden, sondern nur die separat unter "KI-Kosten" erfasste API-Nutzung. Der Unterschied ist, WIE die
+            Person arbeitet: "KI-Prompting" ist die Zeit, die eine Person damit verbringt, KI-Agenten für die
+            KI-lastigen Teile zu briefen, zu prüfen und zu korrigieren; "Klassische Entwicklung" ist Zeit, die eine
+            Person mit klassischer, manueller Umsetzung verbringt. Beides sind Personentätigkeiten - der Split zeigt
+            nur, welcher Arbeitsmodus für welchen Anteil dieser Anforderung überwiegt (abgeleitet aus dem
+            KI-Komplexitäts-Anteil am Gesamtscore).
+          </p>
           <div className="report-summary-grid">
             <div className="report-summary-item">
-              <small>Gesamtaufwand</small>
+              <small>Gesamtaufwand (Personal)</small>
               <b>{du.timeEstimate.totalHours.toFixed(1)} Std.</b>
             </div>
             <div className="report-summary-item">
-              <small>Prompting-Zeit</small>
+              <small>davon KI-Prompting</small>
               <b>{du.timeEstimate.promptingHours.toFixed(1)} Std.</b>
             </div>
             <div className="report-summary-item">
-              <small>Entwicklungszeit</small>
+              <small>davon klassische Entwicklung</small>
               <b>{du.timeEstimate.developmentHours.toFixed(1)} Std.</b>
             </div>
           </div>
           <p className="report-note">
             Annahme: {du.timeEstimate.hoursPerDU} Std./DU (konfigurierbar, keine gemessene Kennzahl - DU
-            repräsentiert Scope/Komplexität/Risiko, keine Zeit).
-            {du.price !== null &&
-              ` Vergleich: ${du.price.toLocaleString("de-DE")} € Erlös über ${du.timeEstimate.totalHours.toFixed(1)} Std. internen Aufwand ≈ ${(du.price / du.timeEstimate.totalHours).toFixed(0)} €/Std. kalkulatorischer Satz.`}
+            repräsentiert Scope/Komplexität/Risiko, keine Zeit). Der Preis oben ergibt sich direkt aus{" "}
+            {du.timeEstimate.totalHours.toFixed(1)} Std. × konfiguriertem Stundensatz (BILLING_RATE_PER_HOUR) - nicht
+            unabhängig davon festgelegt, damit ein DU-Preis rechnerisch nie unter dem gewünschten Stundensatz liegen
+            kann.
           </p>
         </div>
       )}
@@ -217,7 +227,8 @@ export function ManagementReport({ result }: Props) {
               <thead>
                 <tr>
                   <th>Ansatz</th>
-                  <th>Rel. Aufwand</th>
+                  <th>Aufwand im Vergleich</th>
+                  <th>Ersparnis</th>
                   <th>DU-Äquivalent</th>
                   {view === "internal" && <th>Std.</th>}
                   {view === "internal" && <th>Preis (Ä.)</th>}
@@ -230,14 +241,29 @@ export function ManagementReport({ result }: Props) {
                     du.developmentUnits !== null ? Math.round(du.developmentUnits * approach.relativeEffort) : null;
                   const priceEquivalent =
                     duEquivalent !== null && pricePerDUImplied !== null ? Math.round(duEquivalent * pricePerDUImplied) : null;
-                  const isRecommended = approach.id === "classicalDevelopment";
+                  const isBaseline = approach.id === "classicalDevelopment";
+                  const savingsPercent = Math.round((1 - approach.relativeEffort) * 100);
                   return (
-                    <tr key={approach.id} className={isRecommended ? "baseline" : ""}>
+                    <tr key={approach.id} className={isBaseline ? "baseline" : ""}>
+                      <td>{approach.label}</td>
                       <td>
-                        {approach.label}
-                        {isRecommended && <span className="tag" style={{ marginLeft: 6 }}>empfohlen</span>}
+                        <div className="effort-bar-cell">
+                          <div className="effort-bar-track">
+                            <div
+                              className={`effort-bar-fill ${isBaseline ? "baseline" : ""}`}
+                              style={{ width: `${Math.round(approach.relativeEffort * 100)}%` }}
+                            />
+                          </div>
+                          <span className="effort-bar-label">{Math.round(approach.relativeEffort * 100)}%</span>
+                        </div>
                       </td>
-                      <td>{Math.round(approach.relativeEffort * 100)}%</td>
+                      <td>
+                        {isBaseline ? (
+                          <span style={{ color: "var(--muted)" }}>Basiswert</span>
+                        ) : (
+                          <span className="savings-badge">-{savingsPercent}%</span>
+                        )}
+                      </td>
                       <td>{duEquivalent !== null ? `~${duEquivalent} DU` : "–"}</td>
                       {view === "internal" && <td>{approach.estimatedHours.toFixed(1)} Std.</td>}
                       {view === "internal" && (

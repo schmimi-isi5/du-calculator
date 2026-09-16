@@ -211,6 +211,8 @@ ${QUESTION_QUALITY_RULE}
 
 ${EVIDENCE_RULES}
 
+${GERMAN_OUTPUT_RULE}
+
 Produce: a normalization of the requirement (extraction only, no invented facts), the known facts you established, the assumptions you propose, and every information gap you detected with its classification and reasoning - including the ones you resolved yourself (FACT/DERIVED/ASSUMPTION/UNKNOWN_NON_BLOCKING) as well as any genuine CLARIFICATION_REQUIRED items. The application - not you - decides how many of the CLARIFICATION_REQUIRED items actually get asked; list all of them with accurate potentialScoreImpact so it can prioritize correctly.
 
 The repository profile and file contents are provided first, below, as reference material - the actual requirement to resolve follows after it.`;
@@ -260,12 +262,25 @@ const DIMENSION_DESCRIPTIONS = `
 8. uncertaintyRisk (weight 5%): how much is still unclear or risky about delivering this correctly.
 `.trim();
 
+// Every field NOT covered by BILINGUAL_RULE below (which is specifically
+// the three fields that need genuine bilingual EN/DE output) must be
+// written in German only - the app's UI and its users are German-speaking,
+// and the schema/this prompt being in English must never make the model
+// default to English "by default" for its own free-text output. A bilingual
+// version of these other fields is a possible future feature, not today's
+// requirement.
+const GERMAN_OUTPUT_RULE = `
+German-only output rule:
+- Every free-text field NOT explicitly covered by the bilingual output rule below must be written in German (Deutsch) only, regardless of what language the requirement or repository content happens to use.
+`.trim();
+
 const BILINGUAL_RULE = `
 Bilingual output rule:
 - Every "summary", "rationale", and "overallAssessment" field must be written independently in both English and German (Deutsch) - fluent, natural business language in each, not a literal word-for-word translation of the other.
 - "summary" is a single compact sentence per language - the quick read for that dimension.
 - "rationale" is the detailed, evidence-grounded reasoning per language - the full evaluation, consistent with "summary" but more thorough.
 - "overallAssessment" is 2-4 sentences per language that synthesize all eight dimensions together into one read of the requirement's overall scope, complexity, and risk. It still must not state a DU number, class, or price - those are computed by the application, not by you.
+- Every OTHER free-text field this schema asks for (impact analysis items, missingInformation, evidence reasons, suggestedDecomposition titles/descriptions, ...) follows the German-only output rule instead - German only, not English.
 `.trim();
 
 const ASSUMPTION_AWARE_SCORING_RULE = `
@@ -304,6 +319,8 @@ ${DIMENSION_DESCRIPTIONS}
 ${EVIDENCE_RULES}
 
 ${REUSE_RULE}
+
+${GERMAN_OUTPUT_RULE}
 
 ${BILINGUAL_RULE}
 
