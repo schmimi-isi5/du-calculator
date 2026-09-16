@@ -177,13 +177,51 @@ export interface RequirementAssessment {
 
 export type DuClass = "XS" | "S" | "M" | "L" | "XL" | "XXL";
 
+/**
+ * Estimated internal effort in hours, derived deterministically from the DU
+ * result (scoring/effortEstimator.ts) - never AI-invented. hoursPerDU is the
+ * operator-configured business assumption (config.ts HOURS_PER_DU) that
+ * produced this, kept alongside the result so it's always traceable rather
+ * than a bare number. The prompting/development split is derived from how
+ * much of the weighted score the aiComplexity dimension itself accounts for.
+ */
+export interface TimeEstimate {
+  totalHours: number;
+  developmentHours: number;
+  promptingHours: number;
+  hoursPerDU: number;
+}
+
+export type AlternativeApproachId = "classicalDevelopment" | "n8n" | "intrexx" | "n8nIntrexxCombined";
+
+/**
+ * A rough, evidence-weighted comparison against building this on a
+ * low-code/no-code platform instead of custom code - see
+ * scoring/effortEstimator.ts for how relativeEffort is derived from the
+ * requirement's own per-dimension scores and a per-platform "fit" table.
+ * Explicitly a rough estimate, never presented as a verified fact - the fit
+ * table itself is a documented, reviewable assumption, not measured data.
+ */
+export interface AlternativeApproachEstimate {
+  id: AlternativeApproachId;
+  label: string;
+  /** Fraction of classicalDevelopment's own estimatedHours this approach is expected to need - 1.0 = no difference, 0.4 = 60% faster. */
+  relativeEffort: number;
+  estimatedHours: number;
+  rationale: string;
+}
+
 export interface DuResult {
   weightedScore: number;
   duClass: DuClass;
-  developmentUnits: number | null; // null when duClass is XXL
+  developmentUnits: number | null;
   price: number | null; // null when developmentUnits is null or no price configured
   overallConfidence: number;
   confidenceLevel: "HIGH" | "MEDIUM" | "LOW";
+  /** True only for XXL - developmentUnits/price are an extrapolated order-of-magnitude estimate beyond the normal class table, not a firm number. Decomposition is still recommended regardless (see scoring/duEngine.ts determineScoringStatus). */
+  isRoughEstimate: boolean;
+  timeEstimate: TimeEstimate;
+  alternativeApproaches: AlternativeApproachEstimate[];
 }
 
 export interface ConfidenceAssessment {

@@ -63,6 +63,12 @@ export const config = {
   port: parseIntEnv("PORT", 4000),
   databaseUrl: requireEnv("DATABASE_URL"),
   pricePerDU: parsePriceEnv("PRICE_PER_DU", 300),
+  // A rough, operator-tunable business assumption for the internal effort
+  // report (scoring/effortEstimator.ts) - DU explicitly represents scope/
+  // complexity/risk, not time, so there is no measured DU-to-hours
+  // conversion; 6h/DU (~one working day per DU) is a starting default, not
+  // a verified rate. Adjust once real project data gives a better number.
+  hoursPerDU: parsePriceEnv("HOURS_PER_DU", 6) ?? 6,
   gitCloneTimeoutMs: parseIntEnv("GIT_CLONE_TIMEOUT_MS", 60_000),
   gitMaxRepoFiles: parseIntEnv("GIT_MAX_REPO_FILES", 5000),
 

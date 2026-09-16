@@ -11,6 +11,7 @@ import {
 } from "./api/client";
 import { AIUsageDashboard } from "./components/AIUsageDashboard";
 import { HistoryPanel } from "./components/HistoryPanel";
+import { ManagementReport } from "./components/ManagementReport";
 import { RepositoryPanel } from "./components/RepositoryPanel";
 import { RepositoryPicker } from "./components/RepositoryPicker";
 import { RepositorySummaryBar } from "./components/RepositorySummaryBar";
@@ -36,7 +37,7 @@ function linesToList(value: string): string[] {
     .filter((line) => line.length > 0);
 }
 
-type Tab = "new" | "history" | "usage";
+type Tab = "new" | "history" | "usage" | "report";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>("new");
@@ -71,6 +72,11 @@ export default function App() {
   const [historyResult, setHistoryResult] = useState<ScoringResult | null>(null);
   const [historyDetailLoading, setHistoryDetailLoading] = useState(false);
   const [historyDetailError, setHistoryDetailError] = useState<string | null>(null);
+
+  const [reportSelectedId, setReportSelectedId] = useState<string | null>(null);
+  const [reportResult, setReportResult] = useState<ScoringResult | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
 
   const isRepositoryReady = snapshot?.status === "SNAPSHOT_CREATED";
   const isContextResolved = requirementContext?.status === "RESOLVED";
@@ -226,6 +232,21 @@ export default function App() {
     }
   }
 
+  async function handleSelectReportEntry(id: string) {
+    setReportSelectedId(id);
+    setReportLoading(true);
+    setReportError(null);
+    setReportResult(null);
+    try {
+      const result = await getScoringResult(id);
+      setReportResult(result);
+    } catch (err) {
+      setReportError(err instanceof ApiError ? err.message : "Unerwarteter Fehler.");
+    } finally {
+      setReportLoading(false);
+    }
+  }
+
   const canSubmitRequirement =
     isRepositoryReady && !contextLoading && title.trim().length > 0 && description.trim().length > 0;
 
@@ -252,6 +273,9 @@ export default function App() {
           </button>
           <button className={activeTab === "usage" ? "active" : ""} onClick={() => setActiveTab("usage")}>
             KI-Kosten
+          </button>
+          <button className={activeTab === "report" ? "active" : ""} onClick={() => setActiveTab("report")}>
+            Report
           </button>
         </div>
 
@@ -407,6 +431,20 @@ export default function App() {
         )}
 
         {activeTab === "usage" && <AIUsageDashboard />}
+
+        {activeTab === "report" && (
+          <div className="wizard-single-column">
+            <HistoryPanel
+              selectedId={reportSelectedId}
+              onSelect={handleSelectReportEntry}
+              refreshToken={historyRefreshToken}
+            />
+
+            {reportError && <div className="notice error">{reportError}</div>}
+            {reportLoading && <p style={{ fontSize: 13, color: "var(--muted)" }}>Lade Bewertung…</p>}
+            {reportResult && <ManagementReport result={reportResult} />}
+          </div>
+        )}
       </main>
     </>
   );

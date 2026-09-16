@@ -27,22 +27,25 @@ export function ResultHero({ result }: Props) {
         </div>
       </div>
 
-      {isDecompositionRequired ? (
+      {isDecompositionRequired && (
         <div className="hero-alert">
           <span className="hero-alert-icon" aria-hidden="true">
             ⚠️
           </span>
           <div>
             <div className="hero-alert-headline">Zerlegung empfohlen</div>
-            <div className="du-class">Klasse XXL - keine einzelne DU-Zahl</div>
           </div>
         </div>
-      ) : (
-        <>
-          <div className="du-value">{du?.developmentUnits ?? "–"} DU</div>
-          <div className="du-class">Klasse {du?.duClass ?? "–"}</div>
-        </>
       )}
+
+      <div className="du-value">
+        {du?.isRoughEstimate && "~"}
+        {du?.developmentUnits ?? "–"} DU
+      </div>
+      <div className="du-class">
+        Klasse {du?.duClass ?? "–"}
+        {du?.isRoughEstimate && " · grobe Schätzung"}
+      </div>
 
       <div className="kpis">
         <div className="kpi">
@@ -72,6 +75,17 @@ export function ResultHero({ result }: Props) {
         <div style={{ fontSize: 22, fontWeight: 900 }}>
           {du?.price !== undefined && du?.price !== null ? `${du.price.toLocaleString("de-DE")} €` : "–"}
         </div>
+
+        {du?.timeEstimate && (
+          <>
+            <small style={{ display: "block", marginTop: 10 }}>Geschätzter interner Aufwand</small>
+            <div style={{ fontSize: 16, fontWeight: 800 }}>{du.timeEstimate.totalHours.toFixed(1)} Std.</div>
+            <div style={{ fontSize: 11, opacity: 0.85 }}>
+              davon {du.timeEstimate.promptingHours.toFixed(1)} Std. Prompting, {du.timeEstimate.developmentHours.toFixed(1)}{" "}
+              Std. Entwicklung ({du.timeEstimate.hoursPerDU} Std./DU angenommen)
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

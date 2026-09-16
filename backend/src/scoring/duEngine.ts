@@ -8,6 +8,7 @@
 
 import type { DimensionKey, DimensionScores, DuClass, DuResult, ScoringStatus } from "../domain/types.js";
 import { DIMENSION_KEYS } from "../domain/types.js";
+import { estimateAlternativeApproaches, estimateTime } from "./effortEstimator.js";
 
 /** Fixed dimension weights from the spec. Must sum to 1.00. */
 export const DIMENSION_WEIGHTS: Record<DimensionKey, number> = {
@@ -39,8 +40,36 @@ export const CLASS_BOUNDARIES: ClassBoundary[] = [
   { duClass: "M", minScore: 2.0, maxScore: 2.7, developmentUnits: 4 },
   { duClass: "L", minScore: 2.7, maxScore: 3.4, developmentUnits: 6 },
   { duClass: "XL", minScore: 3.4, maxScore: 4.1, developmentUnits: 10 },
+  // XXL has no fixed table value - see estimateXXLDevelopmentUnits below,
+  // which extrapolates a number instead of leaving this null. The class
+  // boundaries above were never a single clean formula (the per-point
+  // growth rate between steps varies: XS->S is steeper than M->L), so
+  // rather than overfit a curve through all five points, XXL continues the
+  // one most recent, most relevant growth rate - the L->XL step - forward
+  // past the XL ceiling. This is always a rough, order-of-magnitude number:
+  // decomposition is still recommended regardless (determineScoringStatus).
   { duClass: "XXL", minScore: 4.1, maxScore: Infinity, developmentUnits: null },
 ];
+
+// The last real transition (L -> XL: 6 -> 10 DU over a 0.7-point score
+// range) is the closest available precedent for "what comes after XL" -
+// continuing it is a defensible extrapolation, not an arbitrary multiplier.
+const XL_BOUNDARY = CLASS_BOUNDARIES[4]!;
+const L_BOUNDARY = CLASS_BOUNDARIES[3]!;
+const XXL_GROWTH_RATE_PER_SCORE_POINT = Math.pow(
+  XL_BOUNDARY.developmentUnits! / L_BOUNDARY.developmentUnits!,
+  1 / (XL_BOUNDARY.maxScore - L_BOUNDARY.maxScore),
+);
+
+/** A weighted score can theoretically reach 5.0 (every dimension scored 5) - the ceiling this extrapolation is ever evaluated up to. */
+export const MAX_WEIGHTED_SCORE = 5.0;
+
+/** Extrapolated DU estimate for a weighted score past the XL ceiling - always rounded, never exact, and always paired with isRoughEstimate: true by computeDuResult. */
+export function estimateXXLDevelopmentUnits(weightedScore: number): number {
+  const scoreAboveCeiling = Math.min(weightedScore, MAX_WEIGHTED_SCORE) - XL_BOUNDARY.maxScore;
+  const raw = XL_BOUNDARY.developmentUnits! * Math.pow(XXL_GROWTH_RATE_PER_SCORE_POINT, scoreAboveCeiling);
+  return Math.round(raw);
+}
 
 export const CONFIDENCE_THRESHOLDS = {
   high: 0.85,
@@ -83,15 +112,21 @@ export function classifyConfidence(overallConfidence: number): "HIGH" | "MEDIUM"
 
 export function mapScoreToClass(
   weightedScore: number,
-): { duClass: DuClass; developmentUnits: number | null } {
+): { duClass: DuClass; developmentUnits: number; isRoughEstimate: boolean } {
   for (const boundary of CLASS_BOUNDARIES) {
     if (weightedScore <= boundary.maxScore) {
-      return { duClass: boundary.duClass, developmentUnits: boundary.developmentUnits };
+      if (boundary.developmentUnits !== null) {
+        return { duClass: boundary.duClass, developmentUnits: boundary.developmentUnits, isRoughEstimate: false };
+      }
+      return {
+        duClass: boundary.duClass,
+        developmentUnits: estimateXXLDevelopmentUnits(weightedScore),
+        isRoughEstimate: true,
+      };
     }
   }
   // Unreachable: the last boundary's maxScore is Infinity.
-  const xxl = CLASS_BOUNDARIES[CLASS_BOUNDARIES.length - 1]!;
-  return { duClass: xxl.duClass, developmentUnits: xxl.developmentUnits };
+  return { duClass: "XXL", developmentUnits: estimateXXLDevelopmentUnits(weightedScore), isRoughEstimate: true };
 }
 
 export function calculatePrice(
@@ -108,12 +143,14 @@ export function calculatePrice(
  * DECOMPOSITION_REQUIRED) - that is an application-level concern based on
  * confidenceLevel and duClass, handled by the caller (see api/requirementRoutes.ts).
  */
-export function computeDuResult(scores: DimensionScores, pricePerDU: number | null): DuResult {
+export function computeDuResult(scores: DimensionScores, pricePerDU: number | null, hoursPerDU: number): DuResult {
   const weightedScore = calculateWeightedScore(scores);
-  const { duClass, developmentUnits } = mapScoreToClass(weightedScore);
+  const { duClass, developmentUnits, isRoughEstimate } = mapScoreToClass(weightedScore);
   const overallConfidence = calculateOverallConfidence(scores);
   const confidenceLevel = classifyConfidence(overallConfidence);
   const price = calculatePrice(developmentUnits, pricePerDU);
+  const timeEstimate = estimateTime(developmentUnits, scores, hoursPerDU);
+  const alternativeApproaches = estimateAlternativeApproaches(scores, timeEstimate);
 
   return {
     weightedScore,
@@ -122,6 +159,9 @@ export function computeDuResult(scores: DimensionScores, pricePerDU: number | nu
     price,
     overallConfidence,
     confidenceLevel,
+    isRoughEstimate,
+    timeEstimate,
+    alternativeApproaches,
   };
 }
 
