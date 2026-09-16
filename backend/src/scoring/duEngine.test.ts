@@ -9,8 +9,11 @@ import {
   classifyConfidence,
   computeDuResult,
   determineScoringStatus,
+  estimateXXLDevelopmentUnits,
   mapScoreToClass,
 } from "./duEngine.js";
+
+const HOURS_PER_DU = 6;
 
 function buildScores(
   overrides: Partial<Record<DimensionKey, { score: 1 | 2 | 3 | 4 | 5; confidence: number }>> = {},
@@ -69,7 +72,7 @@ describe("calculateWeightedScore", () => {
 });
 
 describe("mapScoreToClass - boundary behavior", () => {
-  const cases: Array<[number, string, number | null]> = [
+  const cases: Array<[number, string, number]> = [
     [1.0, "XS", 1],
     [1.5, "XS", 1],
     [1.51, "S", 2],
@@ -80,14 +83,38 @@ describe("mapScoreToClass - boundary behavior", () => {
     [3.4, "L", 6],
     [3.41, "XL", 10],
     [4.1, "XL", 10],
-    [4.11, "XXL", null],
-    [5.0, "XXL", null],
+    [4.11, "XXL", 10],
+    [4.5, "XXL", 13],
+    [5.0, "XXL", 19],
   ];
 
   it.each(cases)("maps weighted score %s to class %s (%s DU)", (score, expectedClass, expectedDu) => {
     const result = mapScoreToClass(score);
     expect(result.duClass).toBe(expectedClass);
     expect(result.developmentUnits).toBe(expectedDu);
+  });
+
+  it("marks isRoughEstimate true only for XXL", () => {
+    expect(mapScoreToClass(4.1).isRoughEstimate).toBe(false);
+    expect(mapScoreToClass(4.11).isRoughEstimate).toBe(true);
+    expect(mapScoreToClass(5.0).isRoughEstimate).toBe(true);
+  });
+});
+
+describe("estimateXXLDevelopmentUnits", () => {
+  it("continues just above the XL ceiling at essentially the XL value", () => {
+    expect(estimateXXLDevelopmentUnits(4.11)).toBe(10);
+  });
+
+  it("grows monotonically as the weighted score increases", () => {
+    const values = [4.2, 4.5, 4.8, 5.0].map(estimateXXLDevelopmentUnits);
+    for (let i = 1; i < values.length; i++) {
+      expect(values[i]).toBeGreaterThan(values[i - 1]!);
+    }
+  });
+
+  it("clamps at the theoretical maximum weighted score (5.0) - a higher input never produces a higher estimate", () => {
+    expect(estimateXXLDevelopmentUnits(6.0)).toBe(estimateXXLDevelopmentUnits(5.0));
   });
 });
 
@@ -145,7 +172,7 @@ describe("computeDuResult", () => {
     const scores = buildScores(
       Object.fromEntries(DIMENSION_KEYS.map((k) => [k, { score: 3, confidence: 0.9 }])) as never,
     );
-    const result = computeDuResult(scores, 300);
+    const result = computeDuResult(scores, 300, HOURS_PER_DU);
 
     expect(result.weightedScore).toBe(3.0);
     expect(result.duClass).toBe("L");
@@ -153,26 +180,59 @@ describe("computeDuResult", () => {
     expect(result.price).toBe(1800);
     expect(result.overallConfidence).toBe(0.9);
     expect(result.confidenceLevel).toBe("HIGH");
+    expect(result.isRoughEstimate).toBe(false);
   });
 
-  it("flags DECOMPOSITION_REQUIRED-eligible results with no development units or price", () => {
+  it("gives XXL results a positive, rough-estimate development unit count and price instead of null", () => {
     const scores = buildScores(
       Object.fromEntries(DIMENSION_KEYS.map((k) => [k, { score: 5, confidence: 0.9 }])) as never,
     );
-    const result = computeDuResult(scores, 300);
+    const result = computeDuResult(scores, 300, HOURS_PER_DU);
 
     expect(result.duClass).toBe("XXL");
-    expect(result.developmentUnits).toBeNull();
-    expect(result.price).toBeNull();
+    expect(result.developmentUnits).toBe(19);
+    expect(result.price).toBe(19 * 300);
+    expect(result.isRoughEstimate).toBe(true);
   });
 
   it("surfaces LOW confidence so the caller can withhold the DU estimate", () => {
     const scores = buildScores(
       Object.fromEntries(DIMENSION_KEYS.map((k) => [k, { score: 3, confidence: 0.4 }])) as never,
     );
-    const result = computeDuResult(scores, 300);
+    const result = computeDuResult(scores, 300, HOURS_PER_DU);
 
     expect(result.confidenceLevel).toBe("LOW");
+  });
+
+  it("attaches a time estimate derived from the development units and hoursPerDU", () => {
+    const scores = buildScores(
+      Object.fromEntries(DIMENSION_KEYS.map((k) => [k, { score: 3, confidence: 0.9 }])) as never,
+    );
+    const result = computeDuResult(scores, 300, HOURS_PER_DU);
+
+    expect(result.timeEstimate.hoursPerDU).toBe(HOURS_PER_DU);
+    expect(result.timeEstimate.totalHours).toBe(6 * HOURS_PER_DU);
+    expect(result.timeEstimate.developmentHours + result.timeEstimate.promptingHours).toBeCloseTo(
+      result.timeEstimate.totalHours,
+      5,
+    );
+  });
+
+  it("attaches all four alternative approach estimates, classical development at relativeEffort 1.0", () => {
+    const scores = buildScores(
+      Object.fromEntries(DIMENSION_KEYS.map((k) => [k, { score: 3, confidence: 0.9 }])) as never,
+    );
+    const result = computeDuResult(scores, 300, HOURS_PER_DU);
+
+    expect(result.alternativeApproaches.map((a) => a.id)).toEqual([
+      "classicalDevelopment",
+      "n8n",
+      "intrexx",
+      "n8nIntrexxCombined",
+    ]);
+    const classical = result.alternativeApproaches[0]!;
+    expect(classical.relativeEffort).toBe(1);
+    expect(classical.estimatedHours).toBe(result.timeEstimate.totalHours);
   });
 });
 
@@ -188,23 +248,23 @@ describe("determineScoringStatus", () => {
   );
 
   it("returns SCORED when confident, in-range, and no assumptions were used", () => {
-    const result = computeDuResult(highConfidenceScores, 300);
+    const result = computeDuResult(highConfidenceScores, 300, HOURS_PER_DU);
     expect(determineScoringStatus(result, 0)).toBe("SCORED");
   });
 
   it("returns ASSESSMENT_WITH_ASSUMPTIONS when confident and in-range but assumptions were relied on", () => {
-    const result = computeDuResult(highConfidenceScores, 300);
+    const result = computeDuResult(highConfidenceScores, 300, HOURS_PER_DU);
     expect(determineScoringStatus(result, 3)).toBe("ASSESSMENT_WITH_ASSUMPTIONS");
   });
 
   it("returns DECOMPOSITION_REQUIRED for XXL regardless of assumptions used", () => {
-    const result = computeDuResult(xxlScores, 300);
+    const result = computeDuResult(xxlScores, 300, HOURS_PER_DU);
     expect(determineScoringStatus(result, 0)).toBe("DECOMPOSITION_REQUIRED");
     expect(determineScoringStatus(result, 2)).toBe("DECOMPOSITION_REQUIRED");
   });
 
   it("returns NEEDS_CLARIFICATION for LOW confidence even when assumptions were used - assumptions never mask low confidence", () => {
-    const result = computeDuResult(lowConfidenceScores, 300);
+    const result = computeDuResult(lowConfidenceScores, 300, HOURS_PER_DU);
     expect(determineScoringStatus(result, 0)).toBe("NEEDS_CLARIFICATION");
     expect(determineScoringStatus(result, 5)).toBe("NEEDS_CLARIFICATION");
   });

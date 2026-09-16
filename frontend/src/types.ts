@@ -199,6 +199,25 @@ export type DimensionScores = Record<DimensionKey, DimensionScore>;
 
 export type DuClass = "XS" | "S" | "M" | "L" | "XL" | "XXL";
 
+/** Estimated internal effort in hours - a business assumption (hoursPerDU), never a measured fact. See backend/src/scoring/effortEstimator.ts. */
+export interface TimeEstimate {
+  totalHours: number;
+  developmentHours: number;
+  promptingHours: number;
+  hoursPerDU: number;
+}
+
+export type AlternativeApproachId = "classicalDevelopment" | "n8n" | "intrexx" | "n8nIntrexxCombined";
+
+/** A rough, evidence-weighted comparison against building this on a low-code/no-code platform instead of custom code. */
+export interface AlternativeApproachEstimate {
+  id: AlternativeApproachId;
+  label: string;
+  relativeEffort: number;
+  estimatedHours: number;
+  rationale: string;
+}
+
 export interface DuResult {
   weightedScore: number;
   duClass: DuClass;
@@ -206,6 +225,10 @@ export interface DuResult {
   price: number | null;
   overallConfidence: number;
   confidenceLevel: "HIGH" | "MEDIUM" | "LOW";
+  /** True only for XXL - developmentUnits/price are a rough, extrapolated order-of-magnitude estimate, not a firm number. Decomposition is still recommended regardless. */
+  isRoughEstimate: boolean;
+  timeEstimate: TimeEstimate;
+  alternativeApproaches: AlternativeApproachEstimate[];
 }
 
 export interface ConfidenceAssessment {

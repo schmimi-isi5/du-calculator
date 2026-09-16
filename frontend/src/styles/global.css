@@ -1167,3 +1167,85 @@ code.file-path {
 .assumption-meta {
   margin-top: 4px;
 }
+
+.report-header h3 {
+  margin: 0 0 4px;
+  font-size: 18px;
+}
+
+.report-header p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.report-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.report-summary-item {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.report-summary-item small {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.report-summary-item b {
+  font-size: 16px;
+}
+
+.report-section {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.report-section h4 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+
+.report-note {
+  font-size: 11px;
+  color: var(--muted);
+  margin: 4px 0 10px;
+}
+
+.approach-table-wrap {
+  overflow-x: auto;
+}
+
+.approach-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.approach-table th {
+  text-align: left;
+  padding: 6px 10px;
+  color: var(--muted);
+  font-size: 11px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.approach-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #eef1f0;
+  vertical-align: top;
+}
+
+.approach-table tr.baseline td {
+  font-weight: 700;
+  background: var(--teal-tint);
+}
