@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ApiError, getOllamaStatus, getSelectableModels } from "../api/client";
-import { MODEL_CATEGORY_LABELS, QUALITY_LEVEL_META, QUALITY_LEVEL_ORDER } from "../types";
+import { AI_PROVIDER_LABELS, MODEL_CATEGORY_LABELS, QUALITY_LEVEL_META, QUALITY_LEVEL_ORDER } from "../types";
 import type { QualityLevel, SelectableModel } from "../types";
 
 const AUTO_OPTION_ID = "auto";
@@ -171,7 +171,14 @@ export function RequirementPanel({
             {selectableModels.map((m) => {
               const disabled = loading || isDisabled(m);
               const reason = disabledReason(m);
-              const subtitle = [MODEL_CATEGORY_LABELS[m.category], m.local ? "keine API-Kosten" : null]
+              const subtitle = [
+                // OpenRouter's own model catalog isn't fixed, so its
+                // display name alone doesn't say where the model runs -
+                // unlike e.g. "Claude Opus 5", which already implies Anthropic.
+                m.provider === "openrouter" ? AI_PROVIDER_LABELS.openrouter : null,
+                MODEL_CATEGORY_LABELS[m.category],
+                m.local ? "keine API-Kosten" : null,
+              ]
                 .filter(Boolean)
                 .join(" · ");
               return (

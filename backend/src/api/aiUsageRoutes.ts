@@ -1,8 +1,8 @@
 import type { Response } from "express";
 import { Router } from "express";
-import { currentProviderCredentials } from "../ai/providerAvailability.js";
+import { currentModelRegistry, currentProviderCredentials } from "../ai/providerAvailability.js";
 import { config } from "../config.js";
-import { AUTO_MODEL_ID, isModelConfigured, MODEL_REGISTRY } from "../domain/models.js";
+import { AUTO_MODEL_ID, isModelConfigured } from "../domain/models.js";
 import { aiUsageStore } from "../store/AIUsageStore.js";
 import { asyncHandler } from "./asyncHandler.js";
 import { defaultModelId } from "./requirementContextService.js";
@@ -75,9 +75,10 @@ aiUsageRouter.get("/config", (_req, res) => {
 // werden").
 aiUsageRouter.get("/models", (_req, res) => {
   const credentials = currentProviderCredentials();
+  const registry = currentModelRegistry();
   res.status(200).json({
     autoModelId: AUTO_MODEL_ID,
-    models: MODEL_REGISTRY.filter((m) => m.enabled).map((m) => ({ ...m, available: isModelConfigured(m, credentials) })),
+    models: registry.filter((m) => m.enabled).map((m) => ({ ...m, available: isModelConfigured(m, credentials) })),
     default: defaultModelId(),
   });
 });

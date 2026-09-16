@@ -91,7 +91,7 @@ export function getAIProvider(): AIProvider {
 // This is deliberately independent of the legacy getAIProvider() singleton
 // above: a deployment can have AI_PROVIDER=anthropic configured for
 // repository analysis while simultaneously offering DeepSeek/OpenAI/Google/
-// Qwen/Ollama models for per-requirement selection, because each provider's
+// Qwen/Ollama/OpenRouter models for per-requirement selection, because each provider's
 // availability here depends only on its own credential, never on
 // config.aiProvider.
 
@@ -150,10 +150,21 @@ function buildProviderInstance(provider: AIProviderName): AIProvider {
         model: "",
       });
     }
-    case "openrouter":
+    case "openrouter": {
+      if (!config.openrouterApiKey) {
+        throw new AIProviderError("OPENROUTER_API_KEY is not configured - cannot use an OpenRouter model.", "provider_unavailable");
+      }
+      return new OpenAICompatibleProvider({
+        providerName: "openrouter",
+        apiKey: config.openrouterApiKey,
+        baseURL: config.openrouterBaseUrl,
+        model: "",
+      });
+    }
     case "local":
-      // Legacy single-pointer providers - not reachable through the
-      // registry (domain/models.ts MODEL_REGISTRY has no entries for them).
+      // The legacy single-pointer "local" provider - not reachable through
+      // the registry (domain/models.ts has no entries for it; the
+      // registry-native equivalent is "ollama").
       throw new AIProviderError(`"${provider}" is not a Model Registry provider.`, "model_unavailable");
   }
 }

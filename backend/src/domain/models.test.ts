@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   AUTO_MODEL_ID,
+  buildEffectiveRegistry,
+  buildOpenRouterEntries,
   findByProviderAndApiModel,
   getModelById,
   isModelConfigured,
@@ -19,6 +21,7 @@ const NO_CREDENTIALS: ProviderCredentials = {
   deepseek: false,
   google: false,
   qwen: false,
+  openrouter: false,
 };
 
 const ALL_CREDENTIALS: ProviderCredentials = {
@@ -27,6 +30,7 @@ const ALL_CREDENTIALS: ProviderCredentials = {
   deepseek: true,
   google: true,
   qwen: true,
+  openrouter: true,
 };
 
 describe("MODEL_REGISTRY", () => {
@@ -201,5 +205,69 @@ describe("resolveAutoModel", () => {
   it("resolves localOnly to the local model even with zero cloud credentials configured", () => {
     const criteria = { qualityLevel: "standard" as const, isLargeContext: false, localOnly: true };
     expect(resolveAutoModel(criteria, NO_CREDENTIALS, false)).toBe("qwen3-coder-local");
+  });
+});
+
+describe("buildOpenRouterEntries", () => {
+  it("creates one enabled, non-local registry entry per configured slug", () => {
+    const entries = buildOpenRouterEntries(["anthropic/claude-3.7-sonnet", "mistralai/mixtral-8x22b-instruct"]);
+    expect(entries).toHaveLength(2);
+    expect(entries.every((e) => e.provider === "openrouter" && e.enabled && !e.local)).toBe(true);
+  });
+
+  it("uses the slug itself as both id and apiModel - never a second hard-coded string", () => {
+    const [entry] = buildOpenRouterEntries(["deepseek/deepseek-r1"]);
+    expect(entry!.id).toBe("deepseek/deepseek-r1");
+    expect(entry!.apiModel).toBe("deepseek/deepseek-r1");
+  });
+
+  it("humanizes the slug's model segment into a display name", () => {
+    const [entry] = buildOpenRouterEntries(["mistralai/mixtral-8x22b-instruct"]);
+    expect(entry!.displayName).toBe("Mixtral 8x22b Instruct");
+  });
+
+  it("humanizes a slug with no provider prefix the same way", () => {
+    const [entry] = buildOpenRouterEntries(["some-model-name"]);
+    expect(entry!.displayName).toBe("Some Model Name");
+  });
+
+  it("declares no price fields - OpenRouter pricing varies per upstream model and is never guessed here", () => {
+    const [entry] = buildOpenRouterEntries(["openai/gpt-4o"]);
+    expect(entry!.inputPricePerMillion).toBeUndefined();
+    expect(entry!.outputPricePerMillion).toBeUndefined();
+  });
+
+  it("returns an empty list for no configured slugs", () => {
+    expect(buildOpenRouterEntries([])).toEqual([]);
+  });
+});
+
+describe("buildEffectiveRegistry", () => {
+  it("appends the configured OpenRouter models to the curated registry without altering it", () => {
+    const registry = buildEffectiveRegistry(["anthropic/claude-3.7-sonnet"]);
+    expect(registry.length).toBe(MODEL_REGISTRY.length + 1);
+    expect(registry.slice(0, MODEL_REGISTRY.length)).toEqual(MODEL_REGISTRY);
+    expect(registry.at(-1)?.id).toBe("anthropic/claude-3.7-sonnet");
+  });
+
+  it("is available once OPENROUTER_API_KEY-equivalent credentials are set, unavailable otherwise", () => {
+    const registry = buildEffectiveRegistry(["anthropic/claude-3.7-sonnet"]);
+    const entry = getModelById("anthropic/claude-3.7-sonnet", registry)!;
+    expect(isModelConfigured(entry, NO_CREDENTIALS)).toBe(false);
+    expect(isModelConfigured(entry, ALL_CREDENTIALS)).toBe(true);
+  });
+
+  it("lets an OpenRouter model be resolved via getModelById/listAvailableModels/isSelectableModel when passed the effective registry", () => {
+    const registry = buildEffectiveRegistry(["anthropic/claude-3.7-sonnet"]);
+    expect(isSelectableModel("anthropic/claude-3.7-sonnet", ALL_CREDENTIALS, registry)).toBe(true);
+    expect(isSelectableModel("anthropic/claude-3.7-sonnet", NO_CREDENTIALS, registry)).toBe(false);
+    expect(listAvailableModels(ALL_CREDENTIALS, registry).map((m) => m.id)).toContain("anthropic/claude-3.7-sonnet");
+  });
+
+  it("never makes an OpenRouter model selectable against the default (curated-only) registry", () => {
+    // A caller that forgets to pass the effective registry falls back to
+    // MODEL_REGISTRY, where OpenRouter models never appear - this is the
+    // guarantee that catches that mistake instead of silently ignoring it.
+    expect(isSelectableModel("anthropic/claude-3.7-sonnet", ALL_CREDENTIALS)).toBe(false);
   });
 });

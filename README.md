@@ -68,13 +68,27 @@ hard-coded model string.
 | Google Gemini | `OpenAICompatibleProvider` | Google's official OpenAI-compatible endpoint. |
 | Alibaba Qwen | `OpenAICompatibleProvider` | DashScope's OpenAI-compatible mode. |
 | Ollama (local) | `OpenAICompatibleProvider` | Local server, no API key, configurable base URL. |
+| OpenRouter | `OpenAICompatibleProvider` | Gateway to hundreds of upstream models - see below. |
 
 ### Supported Models
 
-The full, current list is always `MODEL_REGISTRY` in `backend/src/domain/models.ts` (also served
-live at `GET /api/ai-usage/models`) - at the time of writing: DeepSeek V4.1 Flash, GPT-6 Astra,
-GPT-5.6 Luna, Gemini 3.8 Flash, Claude Fable 5, Claude Sonnet 5, Claude Opus 5, Qwen3 Coder Next,
-and Qwen3 Coder 30B (local, via Ollama).
+The curated list is always `MODEL_REGISTRY` in `backend/src/domain/models.ts` (also served live at
+`GET /api/ai-usage/models`) - at the time of writing: DeepSeek V4.1 Flash, GPT-6 Astra, GPT-5.6 Luna,
+Gemini 3.8 Flash, Claude Fable 5, Claude Sonnet 5, Claude Opus 5, Qwen3 Coder Next, and Qwen3 Coder
+30B (local, via Ollama). On top of that, every model slug named in `OPENROUTER_MODELS` appears too
+(see OpenRouter below) - the *effective* set of selectable models a running deployment offers is
+these two combined (`buildEffectiveRegistry` / `ai/providerAvailability.ts` `currentModelRegistry()`).
+
+**OpenRouter is different from the other providers on purpose**: it's a gateway to hundreds of
+upstream models, not a fixed catalog, so there is no sensible fixed list to hard-code. Instead, name
+exactly the model slugs you want selectable in `OPENROUTER_MODELS` (comma-separated, e.g.
+`anthropic/claude-3.7-sonnet,mistralai/mixtral-8x22b-instruct,deepseek/deepseek-r1`) - each becomes a
+registry entry automatically (`buildOpenRouterEntries`), using the slug itself as both the display id
+and the literal API model string, with a display name humanized from the slug. Because OpenRouter's
+own per-model pricing varies by upstream provider and isn't fixed here, these entries carry no price
+fields - usage logs with `costUsd: null` ("unknown"), same as any other unpriced model, never a
+guessed number. This shares the same `OPENROUTER_API_KEY` the legacy `AI_PROVIDER=openrouter` pointer
+already uses, so no separate credential is needed if you're already using OpenRouter that way.
 
 ### Environment Variables
 
@@ -84,10 +98,13 @@ choice), each registry provider is configured independently and only needs its o
 the picker:
 
 `DEEPSEEK_API_KEY`, `GOOGLE_AI_API_KEY`, `QWEN_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`,
-`OLLAMA_BASE_URL`, `DEFAULT_LLM_MODEL`, `LLM_ALLOW_PREMIUM_FALLBACK`.
+`OPENROUTER_API_KEY`, `OPENROUTER_MODELS`, `OLLAMA_BASE_URL`, `DEFAULT_LLM_MODEL`,
+`LLM_ALLOW_PREMIUM_FALLBACK`.
 
 A provider with no key configured simply has no available models in the picker (they're still shown,
-disabled, in the UI) - nothing else breaks.
+disabled, in the UI) - nothing else breaks. `OPENROUTER_MODELS` specifically: leave it unset and
+OpenRouter simply offers no models in the per-requirement picker, regardless of whether
+`OPENROUTER_API_KEY` is set (the key alone, without naming any models, has nothing to select).
 
 ### Local Ollama Setup
 
@@ -128,7 +145,9 @@ its usage with `costUsd: null` ("unknown") rather than a guessed number.
    `OpenAICompatibleProvider` with that provider's base URL/API key (or a new adapter class if it
    isn't OpenAI-wire-compatible).
 3. Add the credential/base-URL fields to `config.ts` and `ai/providerAvailability.ts`.
-4. Add at least one `MODEL_REGISTRY` entry for it.
+4. Add at least one `MODEL_REGISTRY` entry for it - or, if it's a gateway to many models rather than
+   a fixed catalog (like OpenRouter), an operator-configured env var plus a `buildXEntries()` function
+   following `buildOpenRouterEntries`'s pattern instead.
 
 ### Adding another Model
 

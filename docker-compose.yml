@@ -46,6 +46,10 @@ services:
       DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-}
       GOOGLE_BASE_URL: ${GOOGLE_BASE_URL:-}
       QWEN_BASE_URL: ${QWEN_BASE_URL:-}
+      # OpenRouter's model list is operator-configured, not fixed - uses
+      # OPENROUTER_API_KEY above, plus exactly the model slugs to offer.
+      OPENROUTER_MODELS: ${OPENROUTER_MODELS:-}
+      OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-}
       # Local Ollama server - reachable from inside the container, so
       # "localhost" would point at the container itself, not the host
       # machine; override in .env with the host's real address.

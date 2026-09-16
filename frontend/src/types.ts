@@ -113,6 +113,17 @@ export const MODEL_CATEGORY_LABELS: Record<ModelCategory, string> = {
   local: "Lokal",
 };
 
+export const AI_PROVIDER_LABELS: Record<AIProviderName, string> = {
+  anthropic: "Anthropic",
+  openai: "OpenAI",
+  deepseek: "DeepSeek",
+  google: "Google",
+  qwen: "Qwen",
+  ollama: "Ollama",
+  openrouter: "OpenRouter",
+  local: "Lokal",
+};
+
 /** One entry of the central Model Registry (see backend/src/domain/models.ts) this deployment can offer for per-requirement selection. */
 export interface SelectableModel {
   id: string;

@@ -49,6 +49,16 @@ function parsePriceEnv(name: string, fallback: number | null): number | null {
   return value;
 }
 
+/** Comma-separated list, trimmed and with empty entries dropped - used for OPENROUTER_MODELS, where the operator names exactly the model slugs they want selectable. */
+function parseListEnv(name: string): string[] {
+  const raw = process.env[name];
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+}
+
 export const config = {
   port: parseIntEnv("PORT", 4000),
   databaseUrl: requireEnv("DATABASE_URL"),
@@ -87,6 +97,13 @@ export const config = {
   deepseekBaseUrl: process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com/v1",
   googleBaseUrl: process.env.GOOGLE_BASE_URL || "https://generativelanguage.googleapis.com/v1beta/openai/",
   qwenBaseUrl: process.env.QWEN_BASE_URL || "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+  openrouterBaseUrl: process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
+  // OpenRouter is a gateway to hundreds of upstream models, not a fixed
+  // catalog - the operator names exactly which model slugs they want
+  // selectable (e.g. "anthropic/claude-3.7-sonnet,mistralai/mixtral-8x22b").
+  // See domain/models.ts buildOpenRouterEntries, which turns each into a
+  // registry entry - no OpenRouter model string is ever hard-coded here.
+  openrouterModels: parseListEnv("OPENROUTER_MODELS"),
   // No API key required - Ollama serves locally. Never hard-code the
   // address; see spec section 5.
   ollamaBaseUrl: process.env.OLLAMA_BASE_URL || "http://localhost:11434",

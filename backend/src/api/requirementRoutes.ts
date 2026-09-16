@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { AIProviderError } from "../ai/AIProvider.js";
 import { getAIProviderForModel } from "../ai/getAIProvider.js";
+import { currentModelRegistry } from "../ai/providerAvailability.js";
 import { config } from "../config.js";
 import { getModelById } from "../domain/models.js";
 import type { ImpactAnalysis, ScoringResult } from "../domain/types.js";
@@ -75,7 +76,7 @@ requirementRouter.post("/score", asyncHandler(async (req, res) => {
   await store.saveScoringResult(result);
 
   try {
-    const modelEntry = getModelById(requirementContext.model);
+    const modelEntry = getModelById(requirementContext.model, currentModelRegistry());
     if (!modelEntry) {
       throw new AIProviderError(`Unknown model "${requirementContext.model}".`, "model_unavailable");
     }
