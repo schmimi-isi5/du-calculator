@@ -1262,3 +1262,89 @@ code.file-path {
   font-weight: 700;
   background: var(--teal-tint);
 }
+
+.report-recommendation {
+  margin-top: 16px;
+  padding: 20px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--teal), #005e68);
+  color: #fff;
+  text-align: center;
+}
+
+.report-recommendation-label {
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0.85;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.report-recommendation-headline {
+  font-size: 20px;
+  font-weight: 900;
+  margin-top: 4px;
+}
+
+.report-price-hero {
+  font-size: 40px;
+  font-weight: 900;
+  margin-top: 12px;
+  line-height: 1.1;
+}
+
+.report-price-note {
+  font-size: 12px;
+  opacity: 0.9;
+  margin-top: 4px;
+}
+
+.benefit-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.benefit-list li {
+  font-size: 13px;
+  padding-left: 24px;
+  position: relative;
+}
+
+.benefit-list li::before {
+  content: "✓";
+  position: absolute;
+  left: 0;
+  color: var(--green);
+  font-weight: 900;
+}
+
+.report-included-label {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-top: 10px;
+}
+
+.report-included-label:first-child {
+  margin-top: 0;
+}
+
+.report-assessment p {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.report-cta {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--teal);
+}
