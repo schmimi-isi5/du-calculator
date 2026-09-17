@@ -221,7 +221,13 @@ export interface TimeEstimate {
   totalHours: number;
   developmentHours: number;
   promptingHours: number;
+  /** The AI's own explanation of what drives its independent hour estimate - not derived from the dimension scores. */
+  rationale: LocalizedText;
+  /** DU-based cross-check figure (developmentUnits * hoursPerDU) - a reference only, never the source of totalHours. */
+  referenceHoursFromDU: number;
   hoursPerDU: number;
+  /** True when totalHours diverges from referenceHoursFromDU by more than 50% - a signal to review, not an error. */
+  hasSignificantDeviationFromDuReference: boolean;
 }
 
 export type AlternativeApproachId = "classicalDevelopment" | "n8n" | "intrexx" | "n8nIntrexxCombined";

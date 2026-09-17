@@ -1,26 +1,33 @@
 // Derives an internal effort estimate (hours) and an alternative-approach
 // comparison (low-code/no-code vs. classical development) from a scored
-// requirement's DU result. Kept separate from duEngine.ts (which computes
-// DU/class/price only) because this is a distinct, more speculative
-// translation layer: how much internal time this might cost, and how
-// well-suited it is to a platform other than custom code.
+// requirement. Kept separate from duEngine.ts (which computes DU/class/price
+// only) because this is a distinct translation layer: how much internal
+// time this might cost, and how well-suited it is to a platform other than
+// custom code.
 //
-// Every number here is an explicit business assumption or a rough,
-// evidence-weighted estimate, never a fact and never invented by the AI:
-// - hoursPerDU is an operator-configured constant (config.ts HOURS_PER_DU),
-//   not a measured rate - there is no fixed DU-to-hours conversion.
-// - PLATFORM_DIMENSION_FIT is a documented, reviewable judgment call about
-//   what n8n/Intrexx are generally good and bad at, not measured data for
-//   this specific requirement. It should be tuned by someone who actually
-//   knows these platforms well, not treated as verified.
-// The AI itself is never consulted for any of this - it only ever produces
-// the per-dimension scores these estimates are computed from.
+// totalHours comes from the AI's own ImplementationEstimate - an
+// independent, experience-based judgment (domain/schemas.ts
+// ImplementationEstimateSchema), deliberately NOT derived from the DU
+// dimension scores or a DU/hours formula. A DU class of "L" says nothing
+// about how long an "L" actually takes to build; only the AI's own estimate
+// of THIS requirement's implementation effort does. hoursPerDU (config.ts
+// HOURS_PER_DU) is kept only as a rough, independent cross-check reference
+// (referenceHoursFromDU/hasSignificantDeviationFromDuReference) - it is
+// never used to compute totalHours, and a deviation from it is a signal to
+// review, not something the app "corrects" automatically.
+//
+// PLATFORM_DIMENSION_FIT below is a separate, explicit business assumption:
+// a documented, reviewable judgment call about what n8n/Intrexx are
+// generally good and bad at, not measured data for this specific
+// requirement. It should be tuned by someone who actually knows these
+// platforms well, not treated as verified.
 
 import type {
   AlternativeApproachEstimate,
   AlternativeApproachId,
   DimensionKey,
   DimensionScores,
+  ImplementationEstimate,
   TimeEstimate,
 } from "../domain/types.js";
 import { DIMENSION_KEYS } from "../domain/types.js";
@@ -36,25 +43,46 @@ function round2(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
+// How far the AI's independent estimate may diverge from the old DU-based
+// reference before it's flagged for review - a difference this large means
+// the two models of "how big this is" (scope/complexity/risk vs. actual
+// implementation time) disagree enough to be worth a second look, not
+// something to silently reconcile.
+const SIGNIFICANT_DEVIATION_THRESHOLD = 0.5;
+
 /**
- * Splits total estimated hours into "Prompting-Zeit" (designing, tuning,
- * and validating AI prompts/behavior) and "Entwicklungszeit" (everything
- * else) by how much of the requirement's own weighted score the
- * aiComplexity dimension accounts for - a requirement the AI itself scored
- * as AI-heavy gets a proportionally larger prompting share, rather than an
- * arbitrary fixed split.
+ * totalHours is the AI's own estimate, taken as-is. The prompting/
+ * development split IS still computed deterministically here, from how
+ * much of the requirement's weighted score the aiComplexity dimension
+ * accounts for - a requirement the AI itself scored as AI-heavy gets a
+ * proportionally larger prompting share, rather than an arbitrary fixed
+ * split. referenceHoursFromDU is a separate, DU-based sanity-check figure,
+ * never used to adjust totalHours.
  */
-export function estimateTime(developmentUnits: number, scores: DimensionScores, hoursPerDU: number): TimeEstimate {
-  const totalHours = developmentUnits * hoursPerDU;
+export function estimateTime(
+  implementationEstimate: ImplementationEstimate,
+  scores: DimensionScores,
+  developmentUnits: number,
+  hoursPerDU: number,
+): TimeEstimate {
+  const totalHours = implementationEstimate.estimatedHours;
   const weightedScore = DIMENSION_KEYS.reduce((sum, key) => sum + scores[key].score * DIMENSION_WEIGHTS[key], 0);
   const aiComplexityContribution = (scores.aiComplexity.score * DIMENSION_WEIGHTS.aiComplexity) / weightedScore;
   const promptingHours = round1(totalHours * aiComplexityContribution);
+  const referenceHoursFromDU = round1(developmentUnits * hoursPerDU);
+  const hasSignificantDeviationFromDuReference =
+    referenceHoursFromDU > 0
+      ? Math.abs(totalHours - referenceHoursFromDU) / referenceHoursFromDU > SIGNIFICANT_DEVIATION_THRESHOLD
+      : totalHours > 0;
 
   return {
     totalHours: round1(totalHours),
     promptingHours,
     developmentHours: round1(totalHours - promptingHours),
+    rationale: implementationEstimate.rationale,
+    referenceHoursFromDU,
     hoursPerDU,
+    hasSignificantDeviationFromDuReference,
   };
 }
 

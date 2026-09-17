@@ -6,7 +6,14 @@
 // scores; this module is the only place that decides what those scores mean
 // in DU terms.
 
-import type { DimensionKey, DimensionScores, DuClass, DuResult, ScoringStatus } from "../domain/types.js";
+import type {
+  DimensionKey,
+  DimensionScores,
+  DuClass,
+  DuResult,
+  ImplementationEstimate,
+  ScoringStatus,
+} from "../domain/types.js";
 import { DIMENSION_KEYS } from "../domain/types.js";
 import { estimateAlternativeApproaches, estimateTime } from "./effortEstimator.js";
 
@@ -153,12 +160,13 @@ export function computeDuResult(
   scores: DimensionScores,
   billingRatePerHour: number | null,
   hoursPerDU: number,
+  implementationEstimate: ImplementationEstimate,
 ): DuResult {
   const weightedScore = calculateWeightedScore(scores);
   const { duClass, developmentUnits, isRoughEstimate } = mapScoreToClass(weightedScore);
   const overallConfidence = calculateOverallConfidence(scores);
   const confidenceLevel = classifyConfidence(overallConfidence);
-  const timeEstimate = estimateTime(developmentUnits, scores, hoursPerDU);
+  const timeEstimate = estimateTime(implementationEstimate, scores, developmentUnits, hoursPerDU);
   const price = calculatePrice(timeEstimate.totalHours, billingRatePerHour);
   const alternativeApproaches = estimateAlternativeApproaches(scores, timeEstimate);
 

@@ -1237,6 +1237,14 @@ code.file-path {
   margin: 4px 0 10px;
 }
 
+.report-note-warning {
+  color: var(--warn-dark);
+  background: var(--warn-tint);
+  border-left: 3px solid var(--warn);
+  padding: 8px 10px;
+  border-radius: 4px;
+}
+
 .approach-table-wrap {
   overflow-x: auto;
 }

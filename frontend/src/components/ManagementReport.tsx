@@ -202,13 +202,21 @@ export function ManagementReport({ result }: Props) {
               <b>{du.timeEstimate.developmentHours.toFixed(1)} Std.</b>
             </div>
           </div>
+          <p className="report-note">{du.timeEstimate.rationale.de}</p>
           <p className="report-note">
-            Annahme: {du.timeEstimate.hoursPerDU} Std./DU (konfigurierbar, keine gemessene Kennzahl - DU
-            repräsentiert Scope/Komplexität/Risiko, keine Zeit). Der Preis oben ergibt sich direkt aus{" "}
-            {du.timeEstimate.totalHours.toFixed(1)} Std. × konfiguriertem Stundensatz (BILLING_RATE_PER_HOUR) - nicht
-            unabhängig davon festgelegt, damit ein DU-Preis rechnerisch nie unter dem gewünschten Stundensatz liegen
-            kann.
+            Der Aufwand ist eine eigenständige Experten-Einschätzung der KI für genau diese Anforderung - nicht
+            rechnerisch aus der DU-Klasse abgeleitet. Der Preis oben ergibt sich direkt aus{" "}
+            {du.timeEstimate.totalHours.toFixed(1)} Std. × konfiguriertem Stundensatz (BILLING_RATE_PER_HOUR), damit
+            ein Preis rechnerisch nie unter dem gewünschten Stundensatz liegen kann.
           </p>
+          {du.timeEstimate.hasSignificantDeviationFromDuReference && (
+            <p className="report-note report-note-warning">
+              Hinweis: Der grobe DU-Referenzwert ({du.timeEstimate.hoursPerDU} Std./DU × {du.developmentUnits} DU ={" "}
+              {du.timeEstimate.referenceHoursFromDU.toFixed(1)} Std.) weicht deutlich von der KI-Schätzung ab. Das ist
+              kein Fehler - DU-Klasse und Zeitschätzung sind bewusst unabhängige Größen -, aber ein guter Anlass, die
+              Begründung oben genauer zu prüfen.
+            </p>
+          )}
         </div>
       )}
 

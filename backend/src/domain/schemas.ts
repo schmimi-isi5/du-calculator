@@ -114,6 +114,28 @@ export const ScoringOutputSchema = z.object({
 });
 
 /**
+ * An independent, experience-based time estimate - deliberately NOT derived
+ * from the DU dimension scores or any DU/hours formula. This is the AI
+ * reasoning the way a senior engineer or tech lead would when estimating a
+ * ticket: how long would this realistically take, given comparable
+ * real-world work and this specific repository's actual complexity/tech
+ * stack. The application still cross-checks this against a separate,
+ * DU-based reference internally (see scoring/effortEstimator.ts) - this
+ * field is the one that actually determines the customer's quoted price.
+ */
+export const ImplementationEstimateSchema = z.object({
+  estimatedHours: z
+    .number()
+    .min(0)
+    .describe(
+      "Best-guess total hours a capable development team (including AI-assisted work) would need to implement this requirement end-to-end. An independent professional estimate, not derived from any DU/scope formula.",
+    ),
+  rationale: LocalizedTextSchema.describe(
+    "2-4 sentences per language explaining the hour estimate specifically - what drives the time (setup, integration points, testing, edge cases, unfamiliar vs. well-trodden parts of the codebase, ...) and how it compares to similar work you're aware of. Must not just restate the dimension rationales - this is an independent estimation, not a summary of the scores.",
+  ),
+});
+
+/**
  * Impact analysis and scoring merged into one structured response instead of
  * two sequential AI calls - both need the same repository context and
  * requirement, and scoring already consumed the impact analysis as input,
@@ -125,6 +147,7 @@ export const RequirementAssessmentSchema = z.object({
   overallAssessment: LocalizedTextSchema.describe(
     "2-4 sentences per language characterizing the overall scope, complexity, and risk across all eight dimensions together.",
   ),
+  implementationEstimate: ImplementationEstimateSchema,
 });
 
 // ---------------------------------------------------------------------------
