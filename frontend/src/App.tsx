@@ -392,7 +392,7 @@ export default function App() {
         )}
 
         {activeTab === "history" && (
-          <div className="wizard-single-column">
+          <div>
             <HistoryPanel
               selectedId={historySelectedId}
               onSelect={handleSelectHistoryEntry}
