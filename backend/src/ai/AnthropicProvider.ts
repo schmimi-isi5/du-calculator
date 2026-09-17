@@ -17,6 +17,7 @@ import type {
   Requirement,
   RepositoryContext,
   RepositoryProfile,
+  RepositorySnapshotMode,
   RequirementAssessment,
 } from "../domain/types.js";
 import { QUALITY_PROFILES, type EffortLevel } from "../domain/qualityLevels.js";
@@ -88,8 +89,9 @@ export class AnthropicProvider implements AIProvider {
     qualityLevel: QualityLevel,
     model: string,
     usage: UsageContext,
+    mode?: RepositorySnapshotMode,
   ): Promise<ContextResolutionOutput> {
-    const prompt = buildContextResolutionPrompt(requirement, profile, context, answeredClarifications, qualityLevel);
+    const prompt = buildContextResolutionPrompt(requirement, profile, context, answeredClarifications, qualityLevel, mode);
     return this.parse<ContextResolutionOutput>(
       prompt,
       ContextResolutionOutputSchema,
@@ -108,8 +110,9 @@ export class AnthropicProvider implements AIProvider {
     qualityLevel: QualityLevel,
     model: string,
     usage: UsageContext,
+    mode?: RepositorySnapshotMode,
   ): Promise<RequirementAssessment> {
-    const prompt = buildAssessmentPrompt(requirement, profile, context, knowledge, qualityLevel);
+    const prompt = buildAssessmentPrompt(requirement, profile, context, knowledge, qualityLevel, mode);
     return this.parse<RequirementAssessment>(
       prompt,
       RequirementAssessmentSchema,

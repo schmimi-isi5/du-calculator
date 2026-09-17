@@ -52,6 +52,21 @@ export function ManagementReport({ result }: Props) {
   }
 
   const pricePerDUImplied = du.price !== null && du.developmentUnits ? du.price / du.developmentUnits : null;
+  // The customer is quoted the Commercial DU (Base DU adjusted for effort/
+  // cost/innovation/risk - see commercialEngine.ts), not the raw technical
+  // Base DU figure - see CLAUDE.md "Base DU vs Commercial DU". Falls back to
+  // Base DU for a legacy result that never computed a Commercial DU.
+  const customerFacingDU = du.commercialDevelopmentUnits ?? du.developmentUnits;
+  const runtimeCosts = du.directCosts
+    ? (
+        [
+          ["KI/API-Nutzung", du.directCosts.aiApiCost],
+          ["Infrastruktur", du.directCosts.infrastructureCost],
+          ["Third-Party", du.directCosts.thirdPartyCost],
+          ["Sonstiges", du.directCosts.otherDirectCost],
+        ] as const
+      ).filter(([, item]) => item.costType === "RECURRING_RUNTIME" || item.costType === "BOTH")
+    : [];
   const suggestions = result.impactAnalysis?.suggestedDecomposition ?? [];
   const created = result.impactAnalysis?.create ?? [];
   const modified = result.impactAnalysis?.modify ?? [];
@@ -98,7 +113,7 @@ export function ManagementReport({ result }: Props) {
             {du.price !== null ? `${du.price.toLocaleString("de-DE")} €` : "Preis auf Anfrage"}
           </div>
           <div className="report-price-note">
-            einmalig · {DU_CLASS_CUSTOMER_LABELS[du.duClass]}
+            einmalig · {customerFacingDU !== null ? `${customerFacingDU} Development Units` : DU_CLASS_CUSTOMER_LABELS[du.duClass]}
             {du.isRoughEstimate && " · grobe Schätzung, siehe unten"}
           </div>
         </div>
@@ -109,15 +124,19 @@ export function ManagementReport({ result }: Props) {
             <b>{du.duClass}</b>
           </div>
           <div className="report-summary-item">
-            <small>Development Units</small>
+            <small>Base DU (technisch)</small>
             <b>{du.developmentUnits !== null ? `${du.developmentUnits} DU` : "Zerlegung erforderlich"}</b>
+          </div>
+          <div className="report-summary-item">
+            <small>Commercial DU (angeboten)</small>
+            <b>{du.commercialDevelopmentUnits != null ? `${du.commercialDevelopmentUnits} DU` : "–"}</b>
           </div>
           <div className="report-summary-item">
             <small>Preis</small>
             <b>{du.price !== null ? `${du.price.toLocaleString("de-DE")} €` : "–"}</b>
           </div>
           <div className="report-summary-item">
-            <small>Confidence</small>
+            <small>DU Confidence</small>
             <b>
               {Math.round(du.overallConfidence * 100)}% ({du.confidenceLevel})
             </b>
@@ -216,6 +235,86 @@ export function ManagementReport({ result }: Props) {
         </div>
       )}
 
+      {view === "internal" && du.commercialCalculation && (
+        <div className="report-section">
+          <h4>Kaufmännische Kalkulation (Commercial DU)</h4>
+          <p className="report-note" style={{ marginBottom: 10 }}>
+            Base DU beschreibt den technischen Umfang (Scope/Komplexität/Risiko) - Commercial DU ist die tatsächlich
+            angebotene kaufmännische Einheit, angepasst um Aufwand-, Kosten-, Innovations- und Risikofaktoren. Keine
+            feste Stunden-Umrechnung ({"commercialDU ≠ hours / const"}) - jede Anpassung ist einzeln unten
+            aufgeschlüsselt und gedeckelt.
+          </p>
+          <div className="report-summary-grid">
+            <div className="report-summary-item">
+              <small>Base DU</small>
+              <b>{du.commercialCalculation.baseDU ?? "–"}</b>
+            </div>
+            <div className="report-summary-item">
+              <small>Commercial DU</small>
+              <b>{du.commercialCalculation.suggestedCommercialDU ?? "–"}</b>
+            </div>
+            <div className="report-summary-item">
+              <small>Commercial DU Confidence</small>
+              <b>{Math.round(du.commercialCalculation.commercialDUConfidence * 100)}%</b>
+            </div>
+            <div className="report-summary-item">
+              <small>Kalibrierungsstatus</small>
+              <b>{du.commercialCalculation.calibrationStatus}</b>
+            </div>
+          </div>
+          <table className="approach-table" style={{ marginTop: 10 }}>
+            <thead>
+              <tr>
+                <th>Faktor</th>
+                <th>Δ DU</th>
+                <th>Begründung</th>
+              </tr>
+            </thead>
+            <tbody>
+              {du.commercialCalculation.adjustments.map((adj) => (
+                <tr key={adj.label}>
+                  <td>{adj.label}</td>
+                  <td>
+                    {adj.deltaDU > 0 ? "+" : ""}
+                    {adj.deltaDU}
+                  </td>
+                  <td>{adj.reason}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {view === "internal" && (du.directCosts || du.innovation) && (
+        <div className="report-section">
+          <h4>Direkte Kosten & Innovationsgrad</h4>
+          {du.directCosts && (
+            <div className="report-summary-grid" style={{ marginBottom: 10 }}>
+              {(
+                [
+                  ["KI/API", du.directCosts.aiApiCost],
+                  ["Infrastruktur", du.directCosts.infrastructureCost],
+                  ["Third-Party", du.directCosts.thirdPartyCost],
+                  ["Sonstiges", du.directCosts.otherDirectCost],
+                ] as const
+              ).map(([label, item]) => (
+                <div className="report-summary-item" key={label}>
+                  <small>{label}</small>
+                  <b>{item.status === "ESTIMATED" ? `${item.amountEur?.toLocaleString("de-DE")} €` : item.status}</b>
+                </div>
+              ))}
+            </div>
+          )}
+          {du.innovation && (
+            <p className="report-note">
+              Innovationsgrad <b>{du.innovation.level}</b> ({Math.round(du.innovation.confidence * 100)}% Confidence):{" "}
+              {du.innovation.rationale}
+            </p>
+          )}
+        </div>
+      )}
+
       {view === "internal" && du.timeEstimate && (
         <div className="report-section">
           <h4>Interner Personalaufwand (Schätzung, älteres Berechnungsmodell)</h4>
@@ -288,9 +387,22 @@ export function ManagementReport({ result }: Props) {
                 {du.technologyComparison.map((tech) => {
                   const isBaseline = tech.technology === "AI_NATIVE";
                   const percent = Math.round(tech.relativeEffortFactor * 100);
+                  const contributionsTitle = tech.contributions
+                    .map((c) => `${c.label}: ${c.direction === "decreases" ? "-" : "+"}${Math.abs(c.contribution)}`)
+                    .join("\n");
                   return (
                     <tr key={tech.technology} className={isBaseline ? "baseline" : ""}>
-                      <td>{tech.label}</td>
+                      <td title={contributionsTitle}>
+                        {tech.label}
+                        {tech.varianceFlag === "HIGH_VARIANCE_COMPARISON" && (
+                          <span
+                            title="Großer Technologieunterschied prognostiziert - Treiber prüfen (siehe Tooltip auf dem Namen)."
+                            style={{ marginLeft: 6, cursor: "help" }}
+                          >
+                            ⚠️
+                          </span>
+                        )}
+                      </td>
                       <td>
                         <div className="effort-bar-cell">
                           <div className="effort-bar-track">
@@ -402,6 +514,22 @@ export function ManagementReport({ result }: Props) {
             Für diese ältere Bewertung liegt noch kein Plattformvergleich vor (vor Einführung dieses Features
             durchgeführt). Erneut bewerten, um ihn zu erhalten.
           </p>
+        </div>
+      )}
+
+      {view === "customer" && runtimeCosts.length > 0 && (
+        <div className="report-section">
+          <h4>Laufende Kosten</h4>
+          <p className="report-note">
+            Über den einmaligen Preis oben hinaus können folgende laufende Kosten im Betrieb entstehen:
+          </p>
+          <ul className="context-list">
+            {runtimeCosts.map(([label, item]) => (
+              <li key={label}>
+                {label}: {item.status === "ESTIMATED" ? `verbrauchsabhängig, ca. ${item.amountEur?.toLocaleString("de-DE")} €` : "noch nicht belastbar kalkulierbar"}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

@@ -118,6 +118,7 @@ export async function runContextResolution(
     effectiveQualityLevel,
     effectiveModel,
     { snapshotId, requirementContextId: contextId },
+    snapshot.mode,
   );
 
   const parts = buildResolvedContextParts(output, priorClarifications, maxNewClarifications);

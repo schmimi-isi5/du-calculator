@@ -46,7 +46,7 @@ export type TechnologyProfileFactor = (typeof TECHNOLOGY_PROFILE_FACTORS)[number
  * and a display label (scoring/technologyFitEngine.ts TECHNOLOGY_LABELS).
  * Nothing else needs to change; the fit math is generic over this list.
  */
-export const TECHNOLOGY_IDS = ["AI_NATIVE", "N8N", "INTREXX"] as const;
+export const TECHNOLOGY_IDS = ["AI_NATIVE", "CLASSIC", "N8N", "INTREXX"] as const;
 
 export type TechnologyId = (typeof TECHNOLOGY_IDS)[number];
 
@@ -98,6 +98,32 @@ export const TECHNOLOGY_CAPABILITY_PROFILES: Record<TechnologyId, CapabilityProf
     testingRequirements: 0.55,
     deploymentComplexity: 0.2,
     expectedChangeFrequency: 0.55,
+  },
+  // CLASSIC_CUSTOM_DEVELOPMENT = a developer manually implementing the bulk
+  // of the code, WITHOUT coding agents as the primary production method.
+  // Never hard-coded as "always worse than AI_NATIVE" - these values are
+  // lower than AI_NATIVE's own for every factor (coding agents accelerate
+  // implementation, they don't slow it down), but the GAP is deliberately
+  // uneven: narrow where the work is inherently human-driven regardless of
+  // tooling (novel algorithm/architecture design), wide where agents excel
+  // at fast, mechanical generation (forms, CRUD, standard connectors,
+  // tests). This lets CLASSIC still clearly beat N8N/INTREXX on
+  // custom-logic-heavy requirements (see technologyFitEngine.test.ts Test D)
+  // while losing to both AI_NATIVE and often N8N/INTREXX on
+  // boilerplate/standard-automation requirements.
+  CLASSIC: {
+    uiForms: -0.1,
+    crudDataManagement: -0.05,
+    workflowOrchestration: 0.0,
+    standardConnectors: -0.05,
+    customIntegrations: 0.15,
+    customBusinessLogic: 0.35,
+    aiAgentsRag: -0.2,
+    complexStateManagement: 0.3,
+    customAlgorithms: 0.4,
+    testingRequirements: 0.1,
+    deploymentComplexity: 0.05,
+    expectedChangeFrequency: 0.15,
   },
   N8N: {
     uiForms: -0.45,
@@ -162,3 +188,12 @@ export const RELATIVE_EFFORT_FACTOR_GUARDRAIL_MAX = 3.0;
 
 /** Floor to avoid dividing by (near) zero when a raw score collapses toward 0 from an extreme capability effect. */
 export const RAW_SCORE_EPSILON = 0.01;
+
+/**
+ * Business-meaning thresholds (distinct from the technical guardrail above)
+ * for flagging a technology comparison worth a human double-check - NOT an
+ * error, just "the model predicts a very large technology difference here,
+ * verify the drivers" (see scoring/technologyFitEngine.ts HIGH_VARIANCE_COMPARISON).
+ */
+export const HIGH_VARIANCE_LOWER_THRESHOLD = 0.5;
+export const HIGH_VARIANCE_UPPER_THRESHOLD = 2.0;

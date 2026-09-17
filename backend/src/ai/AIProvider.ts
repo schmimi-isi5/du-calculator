@@ -20,6 +20,7 @@ import type {
   Requirement,
   RepositoryContext,
   RepositoryProfile,
+  RepositorySnapshotMode,
   RequirementAssessment,
 } from "../domain/types.js";
 
@@ -71,6 +72,7 @@ export interface AIProvider {
     qualityLevel: QualityLevel,
     model: string,
     usage: UsageContext,
+    mode?: RepositorySnapshotMode,
   ): Promise<ContextResolutionOutput>;
 
   /**
@@ -91,6 +93,7 @@ export interface AIProvider {
     qualityLevel: QualityLevel,
     model: string,
     usage: UsageContext,
+    mode?: RepositorySnapshotMode,
   ): Promise<RequirementAssessment>;
 }
 

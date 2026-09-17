@@ -94,6 +94,45 @@ repositoryRouter.post("/analyze", asyncHandler(async (req, res) => {
   }
 }));
 
+// GREENFIELD mode (spec section 4): no repository exists yet for this
+// requirement. Creates a RepositorySnapshot immediately (no clone, no AI
+// call) with a synthetic profile explicitly marked as such, so the
+// requirement flow downstream (RequirementContext, scoring, history) reuses
+// every existing snapshot-keyed code path unchanged - see ai/prompts.ts
+// GREENFIELD_MODE_NOTE for how the AI is told to treat this profile.
+repositoryRouter.post("/greenfield", asyncHandler(async (req, res) => {
+  const label = typeof req.body?.label === "string" && req.body.label.trim().length > 0 ? req.body.label.trim() : "Greenfield";
+
+  const snapshot: RepositorySnapshot = {
+    id: store.createSnapshotId(),
+    repositoryUrl: `(Kein Repository – Greenfield: ${label})`,
+    branch: "",
+    status: "SNAPSHOT_CREATED",
+    mode: "GREENFIELD",
+    commitSha: null,
+    analyzedAt: new Date().toISOString(),
+    fileTree: [],
+    profile: {
+      summary:
+        "Greenfield-Anforderung ohne bestehendes Repository. Diese Bewertung basiert ausschließlich auf der Anforderung, den Akzeptanzkriterien und der vom Kunden beschriebenen Zielarchitektur.",
+      languages: [],
+      frameworks: [],
+      services: [],
+      dataModels: [],
+      integrations: [],
+      aiComponents: [],
+      tests: [],
+      deployment: [],
+      findings: [],
+    },
+    errorMessage: null,
+  };
+  await store.saveSnapshot(snapshot);
+  await store.saveRepositoryContext(snapshot.id, { fileTree: [], fileExcerpts: {}, omittedFileCount: 0 });
+
+  res.status(200).json(snapshot);
+}));
+
 // Successfully analyzed repositories, for the "reuse an existing repository"
 // picker. Registered before "/:id" - otherwise Express would match this
 // path as an :id.

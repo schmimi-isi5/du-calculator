@@ -21,6 +21,7 @@ interface SnapshotRow extends QueryResultRow {
   repository_url: string;
   branch: string;
   status: string;
+  mode: string;
   commit_sha: string | null;
   analyzed_at: Date | null;
   file_tree: string[] | null;
@@ -33,6 +34,7 @@ interface SnapshotSummaryRow extends QueryResultRow {
   repository_url: string;
   branch: string;
   status: string;
+  mode: string;
   commit_sha: string | null;
   analyzed_at: Date | null;
   profile_summary: string | null;
@@ -103,6 +105,7 @@ function toSnapshot(row: SnapshotRow): RepositorySnapshot {
     repositoryUrl: row.repository_url,
     branch: row.branch,
     status: row.status as RepositorySnapshot["status"],
+    mode: row.mode as RepositorySnapshot["mode"],
     commitSha: row.commit_sha,
     analyzedAt: row.analyzed_at ? row.analyzed_at.toISOString() : null,
     fileTree: row.file_tree ?? [],
@@ -117,6 +120,7 @@ function toSnapshotSummary(row: SnapshotSummaryRow): RepositorySnapshotSummary {
     repositoryUrl: row.repository_url,
     branch: row.branch,
     status: row.status as RepositorySnapshotSummary["status"],
+    mode: row.mode as RepositorySnapshotSummary["mode"],
     commitSha: row.commit_sha,
     analyzedAt: row.analyzed_at ? row.analyzed_at.toISOString() : null,
     profileSummary: row.profile_summary,
@@ -194,10 +198,11 @@ export class PostgresScoringStore implements ScoringStore {
   async saveSnapshot(snapshot: RepositorySnapshot): Promise<void> {
     await pool.query(
       `INSERT INTO repository_snapshots
-         (id, repository_url, branch, status, commit_sha, analyzed_at, file_tree, profile, error_message)
-       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9)
+         (id, repository_url, branch, status, mode, commit_sha, analyzed_at, file_tree, profile, error_message)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10)
        ON CONFLICT (id) DO UPDATE SET
          status = EXCLUDED.status,
+         mode = EXCLUDED.mode,
          commit_sha = EXCLUDED.commit_sha,
          analyzed_at = EXCLUDED.analyzed_at,
          file_tree = EXCLUDED.file_tree,
@@ -208,6 +213,7 @@ export class PostgresScoringStore implements ScoringStore {
         snapshot.repositoryUrl,
         snapshot.branch,
         snapshot.status,
+        snapshot.mode ?? "EXISTING_SYSTEM",
         snapshot.commitSha,
         snapshot.analyzedAt,
         JSON.stringify(snapshot.fileTree),
@@ -219,7 +225,7 @@ export class PostgresScoringStore implements ScoringStore {
 
   async getSnapshot(id: string): Promise<RepositorySnapshot | undefined> {
     const result = await pool.query<SnapshotRow>(
-      `SELECT id, repository_url, branch, status, commit_sha, analyzed_at, file_tree, profile, error_message
+      `SELECT id, repository_url, branch, status, mode, commit_sha, analyzed_at, file_tree, profile, error_message
        FROM repository_snapshots WHERE id = $1`,
       [id],
     );
@@ -228,7 +234,7 @@ export class PostgresScoringStore implements ScoringStore {
 
   async listSnapshots(limit: number): Promise<RepositorySnapshotSummary[]> {
     const result = await pool.query<SnapshotSummaryRow>(
-      `SELECT id, repository_url, branch, status, commit_sha, analyzed_at, profile->>'summary' AS profile_summary
+      `SELECT id, repository_url, branch, status, mode, commit_sha, analyzed_at, profile->>'summary' AS profile_summary
        FROM repository_snapshots
        WHERE status = 'SNAPSHOT_CREATED'
        ORDER BY created_at DESC

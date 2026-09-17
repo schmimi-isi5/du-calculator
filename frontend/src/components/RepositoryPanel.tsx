@@ -12,6 +12,7 @@ interface Props {
   onChangeBranch: (value: string) => void;
   onChangeAccessToken: (value: string) => void;
   onAnalyze: () => void;
+  onGreenfield: () => void;
 }
 
 export function RepositoryPanel({
@@ -25,6 +26,7 @@ export function RepositoryPanel({
   onChangeBranch,
   onChangeAccessToken,
   onAnalyze,
+  onGreenfield,
 }: Props) {
   const statusMeta = REPOSITORY_STATUS_META[snapshot?.status ?? "NOT_ANALYZED"];
 
@@ -68,6 +70,9 @@ export function RepositoryPanel({
       <div className="actions">
         <button className="btn secondary" onClick={onAnalyze} disabled={loading}>
           {loading ? "Analysiere…" : "Repository analysieren"}
+        </button>
+        <button className="btn secondary" onClick={onGreenfield} disabled={loading} title="Neue Anforderung ohne bestehendes Repository bewerten - Greenfield-Modus">
+          Kein Repository vorhanden (Greenfield)
         </button>
         <span className={`status-pill ${statusMeta.variant}`}>{statusMeta.label}</span>
       </div>

@@ -2,7 +2,13 @@
 // call so the instructions can be reviewed and tuned without touching
 // request/response plumbing.
 
-import type { Clarification, Requirement, RepositoryContext, RepositoryProfile } from "../domain/types.js";
+import type {
+  Clarification,
+  Requirement,
+  RepositoryContext,
+  RepositoryProfile,
+  RepositorySnapshotMode,
+} from "../domain/types.js";
 import { QUALITY_PROFILES } from "../domain/qualityLevels.js";
 import type { QualityLevel } from "../domain/types.js";
 import type { RepositoryIdentity, ResolvedRequirementKnowledge } from "./AIProvider.js";
@@ -188,6 +194,7 @@ export function buildContextResolutionPrompt(
   context: RepositoryContext,
   answeredClarifications: Clarification[],
   qualityLevel: QualityLevel,
+  mode: RepositorySnapshotMode = "EXISTING_SYSTEM",
 ): PromptParts {
   const system = `You are running the "Assumption & Clarification" stage of the ISIFIVE DU Calculator, before any impact analysis or scoring happens. Your job is NOT to ask the user everything you don't know - it is to resolve as much as possible yourself, and flag only what truly needs a human decision.
 
@@ -212,7 +219,7 @@ ${QUESTION_QUALITY_RULE}
 ${EVIDENCE_RULES}
 
 ${GERMAN_OUTPUT_RULE}
-
+${mode === "GREENFIELD" ? `\n${GREENFIELD_MODE_NOTE}\n` : ""}
 Produce: a normalization of the requirement (extraction only, no invented facts), the known facts you established, the assumptions you propose, and every information gap you detected with its classification and reasoning - including the ones you resolved yourself (FACT/DERIVED/ASSUMPTION/UNKNOWN_NON_BLOCKING) as well as any genuine CLARIFICATION_REQUIRED items. The application - not you - decides how many of the CLARIFICATION_REQUIRED items actually get asked; list all of them with accurate potentialScoreImpact so it can prioritize correctly.
 
 The repository profile and file contents are provided first, below, as reference material - the actual requirement to resolve follows after it.`;
@@ -330,21 +337,43 @@ Do NOT use this to state or imply a fit percentage, a relative effort, or which 
 `.trim();
 
 const EXISTING_ASSET_LEVERAGE_RULE = `
-Existing asset leverage (existingAssetLeverage) - for EACH of AI_NATIVE, N8N, and INTREXX, judge how much that production method could lean on what already exists in this repository (services, APIs, data models, auth/roles, UI components, tests, CI/CD, integrations, vector stores, agents, prompts, RAG components, reusable libraries, ...):
+Existing asset leverage (existingAssetLeverage) - for EACH of AI_NATIVE, CLASSIC, N8N, and INTREXX, judge how much that production method could lean on what already exists in this repository (services, APIs, data models, auth/roles, UI components, tests, CI/CD, integrations, vector stores, agents, prompts, RAG components, reusable libraries, ...):
 - Ground this ONLY in actual evidence from the repository context provided below - never invent an asset that is not actually present.
-- AI_NATIVE can usually be judged directly from the repository's own code. N8N and Intrexx assets (existing workflows, apps built on those platforms) are rarely visible in a git repository - when you find no evidence either way, set assetLeverage to null (UNKNOWN) with a low confidence, and say so in the rationale. Do NOT default it to 0 - null and 0 mean different things (no evidence found vs. confirmed no reusable assets).
+- AI_NATIVE and CLASSIC can usually be judged directly from the repository's own code (they reuse the exact same existing code - the difference between them is HOW it gets written, not what it can reuse). N8N and Intrexx assets (existing workflows, apps built on those platforms) are rarely visible in a git repository - when you find no evidence either way, set assetLeverage to null (UNKNOWN) with a low confidence, and say so in the rationale. Do NOT default it to 0 - null and 0 mean different things (no evidence found vs. confirmed no reusable assets).
 - This is deliberately separate from the DU dimension scores above: existing assets that only make production faster/easier must never change a DU dimension score (see the reuse rule above) - they only affect this field and, downstream, the Effort/Technology Fit models the application computes from it.
 `.trim();
 
 const TECHNOLOGY_NARRATIVE_RULE = `
-Technology narratives (technologyNarratives) - for EACH of AI_NATIVE, N8N, and INTREXX, give 1-4 concrete advantages and 1-4 concrete disadvantages of that production method specifically for THIS requirement (German). Be specific to this requirement's actual technical shape - not generic platform marketing points. Do not state a percentage, a relative effort, or an hours figure here - that is computed by the application from technologyProfile/existingAssetLeverage, not from this narrative text.
+Technology narratives (technologyNarratives) - for EACH of AI_NATIVE, CLASSIC, N8N, and INTREXX, give 1-4 concrete advantages and 1-4 concrete disadvantages of that production method specifically for THIS requirement (German). Be specific to this requirement's actual technical shape - not generic platform marketing points. Do not state a percentage, a relative effort, or an hours figure here - that is computed by the application from technologyProfile/existingAssetLeverage, not from this narrative text.
 `.trim();
 
 const ANTI_BIAS_RULE = `
 Anti-bias rule for the technology assessment - read this carefully, it corrects a documented prior failure mode:
-- Low-code/no-code is NOT automatically faster than AI-native individual development. AI-native individual development is NOT automatically faster than low-code/no-code.
+- Low-code/no-code is NOT automatically faster than AI-native individual development. AI-native individual development is NOT automatically faster than low-code/no-code. Classical individual development is NOT automatically slower than any of the others - judge it on its own merits too.
 - Judge only the concrete requirement, existing assets, integrations, technical constraints, and each production method's actual fit - never a generic prior about which category of tool is "usually" faster.
-- AI_NATIVE means KI-beschleunigte Entwicklung mit Coding Agents (git-based custom development with coding agents like Claude Code doing the generation/editing, a human handling briefing, architecture decisions, review, and correction) - it must NOT be equated with classical, unassisted manual software development. Do not implicitly assume AI_NATIVE is slow just because "custom code" sounds slower than "low-code platform": AI_NATIVE is often very strong specifically at custom business logic, custom integrations, AI/agents/RAG, custom algorithms, complex state, and automatable testing - and low-code platforms are often very strong specifically at standard forms/CRUD/workflow orchestration/standard connectors. Score technologyProfile and existingAssetLeverage on their own merits for this specific requirement; do not let either technology's general reputation substitute for that.
+- AI_NATIVE means KI-beschleunigte Entwicklung mit Coding Agents (git-based custom development with coding agents like Claude Code doing the generation/editing, a human handling briefing, architecture decisions, review, and correction) - it must NOT be equated with classical, unassisted manual software development. CLASSIC_CUSTOM_DEVELOPMENT is that classical manual alternative: a developer writing the bulk of the implementation by hand, without coding agents as the primary production method - it is a genuinely different production method from AI_NATIVE, not a synonym for it and not automatically identical to it.
+- Do not implicitly assume AI_NATIVE is slow just because "custom code" sounds slower than "low-code platform": AI_NATIVE is often very strong specifically at custom business logic, custom integrations, AI/agents/RAG, custom algorithms, complex state, and automatable testing - and low-code platforms are often very strong specifically at standard forms/CRUD/workflow orchestration/standard connectors.
+- Score technologyProfile and existingAssetLeverage on their own merits for this specific requirement; do not let any technology's general reputation substitute for that.
+`.trim();
+
+const DIRECT_COST_RULE = `
+Direct costs (directCosts) - structured, NOT mixed into any DU dimension score. For each of aiApiCost (LLM tokens/embeddings/OCR/external AI APIs), infrastructureCost (compute/storage/vector DB/additional infrastructure), thirdPartyCost (third-party APIs/licenses/external services), and otherDirectCost:
+- Set costType: ONE_TIME_DEVELOPMENT (incurred only while building this), RECURRING_RUNTIME (incurred every time the delivered feature runs in production), or BOTH.
+- Give a numeric amountEur ONLY when you can genuinely ground it in the requirement/repository (status: ESTIMATED). Otherwise set status to UNKNOWN or ESTIMATE_REQUIRED and leave amountEur null - never invent a plausible-sounding number to avoid leaving a gap.
+- Most requirements will have low or zero direct costs beyond human effort - do not inflate this to seem thorough.
+`.trim();
+
+const INNOVATION_RULE = `
+Innovation assessment (innovation) - level LOW/MEDIUM/HIGH for whether this requirement genuinely needs new technical solutions, has no existing reusable components to build on, requires experimental architecture, needs non-trivial evaluation, or produces reusable new ISIFIVE IP:
+- This is NOT a proxy for "uses AI/LLMs = automatically HIGH". A well-trodden RAG integration using an existing, already-proven internal pattern is LOW/MEDIUM innovation even though it involves AI; a genuinely novel evaluation/agent architecture with no internal precedent is HIGH even if the coding itself is simple.
+- Ground the level in concrete rationale and evidence - never assign HIGH just because a requirement sounds technically impressive.
+`.trim();
+
+const GREENFIELD_MODE_NOTE = `
+GREENFIELD mode - IMPORTANT: there is no existing repository for this requirement. The "repository profile" below is a synthetic placeholder, not real code - treat every repository-dependent judgment accordingly:
+- Never mark anything VERIFIED or INFERRED from "the repository" - there is none. existingAssetLeverage must be null (UNKNOWN) for every technology, since there is no codebase to evaluate reuse against.
+- Base your assessment on the requirement, acceptance criteria, constraints, clarifications, and any target architecture the customer describes instead.
+- A missing repository is not an error and not a reason to lower confidence across the board - only lower confidence for the specific things that genuinely depend on information a repository would have provided.
 `.trim();
 
 /**
@@ -360,10 +389,11 @@ export function buildAssessmentPrompt(
   context: RepositoryContext,
   knowledge: ResolvedRequirementKnowledge,
   qualityLevel: QualityLevel,
+  mode: RepositorySnapshotMode = "EXISTING_SYSTEM",
 ): PromptParts {
-  const system = `You are a senior software architect performing a Requirement Impact Analysis, DU scoring, and technology/effort assessment for the ISIFIVE DU Calculator, in one pass. First determine what already exists, what can be reused, what must be modified, and what must be newly created for this requirement against a repository you have already profiled. Then, using that same analysis, score each of the eight fixed dimensions 1 (very low) to 5 (very high), with a summary, a detailed rationale, evidence, a confidence (0.0-1.0), and any missing information that limits your confidence - plus one overall assessment synthesizing all eight dimensions. You NEVER decide a final Development Unit count - that class/count is computed deterministically by the application from your per-dimension scores alone.
+  const system = `You are a senior software architect performing a Requirement Impact Analysis, DU scoring, and technology/effort/commercial assessment for the ISIFIVE DU Calculator, in one pass. First determine what already exists, what can be reused, what must be modified, and what must be newly created for this requirement against a repository you have already profiled. Then, using that same analysis, score each of the eight fixed dimensions 1 (very low) to 5 (very high), with a summary, a detailed rationale, evidence, a confidence (0.0-1.0), and any missing information that limits your confidence - plus one overall assessment synthesizing all eight dimensions. You NEVER decide a final Development Unit count - that class/count is computed deterministically by the application from your per-dimension scores alone.
 
-Separately - and this is NOT a function of the eight dimension scores - you also assess: an independent AI-native human-effort estimate (effortEstimate), the requirement's technical shape across 12 factors (technologyProfile), how much each production method (AI-native custom code, n8n, Intrexx) can lean on what already exists in this repository (existingAssetLeverage), and a qualitative advantages/disadvantages read per production method (technologyNarratives). The application computes the actual relative effort and price deterministically from these - you never state a fit percentage, a relative effort, a DU class, or a price yourself. See the dedicated rules for all of this below.
+Separately - and this is NOT a function of the eight dimension scores - you also assess: an independent AI-native human-effort estimate (effortEstimate), the requirement's technical shape across 12 factors (technologyProfile), how much each production method (AI-native custom code, classical manual custom code, n8n, Intrexx) can lean on what already exists in this repository (existingAssetLeverage), a qualitative advantages/disadvantages read per production method (technologyNarratives), structured direct costs (directCosts), and an innovation assessment (innovation). The application computes the actual relative effort, Commercial DU, and price deterministically from these - you never state a fit percentage, a relative effort, a DU class, a Commercial DU number, or a price yourself. See the dedicated rules for all of this below.
 
 ${DIMENSION_DESCRIPTIONS}
 
@@ -389,6 +419,10 @@ ${TECHNOLOGY_NARRATIVE_RULE}
 
 ${ANTI_BIAS_RULE}
 
+${DIRECT_COST_RULE}
+
+${INNOVATION_RULE}
+${mode === "GREENFIELD" ? `\n${GREENFIELD_MODE_NOTE}\n` : ""}
 ${QUALITY_PROFILES[qualityLevel].rationaleGuidance}
 
 Known facts and documented assumptions for this requirement are provided below - build on them rather than re-deriving them, and do not raise questions about things they already resolve. If you lack information to score a dimension confidently, say so explicitly in missingInformation and lower that dimension's confidence accordingly - do not compensate by guessing a score you cannot support.

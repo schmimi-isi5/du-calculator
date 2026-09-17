@@ -8,8 +8,11 @@ import { TECHNOLOGY_IDS, TECHNOLOGY_PROFILE_FACTORS, type TechnologyId, type Tec
 import type {
   DimensionKey,
   DimensionScores,
+  DirectCostEstimate,
+  DirectCostItem,
   EffortEstimate,
   ExistingAssetLeverage,
+  InnovationAssessment,
   TechnologyNarrative,
   TechnologyProfile,
 } from "../domain/types.js";
@@ -74,12 +77,34 @@ export function buildTechnologyNarratives(): TechnologyNarrative[] {
   }));
 }
 
-export function buildEffortEstimate(minHours: number, likelyHours: number, maxHours: number): EffortEstimate {
+export function buildEffortEstimate(minHours: number, likelyHours: number, maxHours: number, confidence = 0.8): EffortEstimate {
   return {
     minHours,
     likelyHours,
     maxHours,
-    confidence: 0.8,
+    confidence,
     rationale: { en: "test rationale", de: "Test-Begründung" },
   };
+}
+
+function zeroDirectCostItem(): DirectCostItem {
+  return { amountEur: null, costType: "ONE_TIME_DEVELOPMENT", status: "UNKNOWN", rationale: "test rationale" };
+}
+
+/** Defaults every cost category to UNKNOWN/null - override only what a test cares about. */
+export function buildDirectCostEstimate(overrides: Partial<DirectCostEstimate> = {}): DirectCostEstimate {
+  return {
+    aiApiCost: overrides.aiApiCost ?? zeroDirectCostItem(),
+    infrastructureCost: overrides.infrastructureCost ?? zeroDirectCostItem(),
+    thirdPartyCost: overrides.thirdPartyCost ?? zeroDirectCostItem(),
+    otherDirectCost: overrides.otherDirectCost ?? zeroDirectCostItem(),
+  };
+}
+
+export function buildEstimatedCostItem(amountEur: number, costType: DirectCostItem["costType"] = "ONE_TIME_DEVELOPMENT"): DirectCostItem {
+  return { amountEur, costType, status: "ESTIMATED", rationale: "test rationale" };
+}
+
+export function buildInnovationAssessment(level: InnovationAssessment["level"] = "LOW", confidence = 0.8): InnovationAssessment {
+  return { level, rationale: "test rationale", evidence: [], confidence };
 }

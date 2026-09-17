@@ -12,6 +12,9 @@ export function ResultHero({ result }: Props) {
   const confidence = result?.confidence;
   const isDecompositionRequired = result?.status === "DECOMPOSITION_REQUIRED";
   const suggestionCount = result?.impactAnalysis?.suggestedDecomposition?.length ?? 0;
+  // The headline number is the Commercial DU (the actually offered unit) -
+  // falls back to Base DU for a legacy result with no Commercial Model yet.
+  const headlineDU = du?.commercialDevelopmentUnits ?? du?.developmentUnits ?? null;
 
   return (
     <div className={`hero ${view === "internal" ? "internal-mode" : ""} ${isDecompositionRequired ? "decomposition" : ""}`}>
@@ -39,7 +42,7 @@ export function ResultHero({ result }: Props) {
       )}
 
       <div className="du-value">
-        {du && du.developmentUnits === null ? "Zerlegung erforderlich" : `${du?.developmentUnits ?? "–"} DU`}
+        {du && du.developmentUnits === null ? "Zerlegung erforderlich" : `${headlineDU ?? "–"} DU`}
       </div>
       <div className="du-class">Klasse {du?.duClass ?? "–"}</div>
 
@@ -67,6 +70,11 @@ export function ResultHero({ result }: Props) {
       </div>
 
       <div className="internal-only" style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.25)" }}>
+        {du?.commercialDevelopmentUnits != null && du.developmentUnits !== du.commercialDevelopmentUnits && (
+          <div style={{ fontSize: 11, opacity: 0.85, marginBottom: 8 }}>
+            Base DU (technisch): {du.developmentUnits ?? "–"} · Commercial DU (angeboten): {du.commercialDevelopmentUnits}
+          </div>
+        )}
         <small>Preis (intern)</small>
         <div style={{ fontSize: 22, fontWeight: 900 }}>
           {du?.price !== undefined && du?.price !== null ? `${du.price.toLocaleString("de-DE")} €` : "–"}
