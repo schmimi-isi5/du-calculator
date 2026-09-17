@@ -3,6 +3,15 @@
 // Naming mirrors the German business vocabulary from the product spec
 // (Development Unit / DU) while keeping identifiers in English, matching
 // the rest of the codebase.
+//
+// Four models are kept strictly separate and must never be conflated:
+//   A) DU Model       - scope/complexity/risk of the deliverable (duEngine.ts)
+//   B) Technology Fit  - how well AI_NATIVE/N8N/INTREXX fit THIS requirement's
+//                        technical shape (domain/technology.ts, scoring/technologyFitEngine.ts)
+//   C) Effort Model    - AI_NATIVE's own human-effort corridor (scoring/effortEstimator.ts)
+//   D) Pricing Model   - commercial price, decoupled from production effort (scoring/pricingEngine.ts)
+
+import type { TechnologyId, TechnologyKey, TechnologyProfileFactor } from "./technology.js";
 
 export type RepositoryStatus =
   | "NOT_ANALYZED"
@@ -169,12 +178,77 @@ export interface ScoringOutput {
 }
 
 /**
- * An independent, experience-based time estimate from the AI - not derived
- * from the DU dimension scores or any DU/hours formula. See
- * domain/schemas.ts ImplementationEstimateSchema for the full contract.
+ * @deprecated Superseded by EffortEstimate (a min/likely/max corridor
+ * instead of a single number) - kept only so a DuResult read from a row
+ * scored before this change (calculationModelVersion absent) still
+ * type-checks. Never produced by new scoring calls.
  */
 export interface ImplementationEstimate {
   estimatedHours: number;
+  rationale: LocalizedText;
+}
+
+// ---------------------------------------------------------------------------
+// Technology Fit Model (Model B) - see domain/technology.ts for the factor
+// list, the per-technology CapabilityProfile hypotheses, and the overhead/
+// guardrail constants. This section only defines what the AI outputs; the
+// deterministic fit math lives in scoring/technologyFitEngine.ts.
+// ---------------------------------------------------------------------------
+
+/** The AI's assessment of one TechnologyProfileFactor for this specific requirement - see domain/schemas.ts TechnologyProfileFactorSchema. */
+export interface TechnologyProfileFactorScore {
+  /** 0 = practically not relevant to this requirement, 5 = very strongly characterizes it. */
+  score: 0 | 1 | 2 | 3 | 4 | 5;
+  rationale: string;
+  evidence: Evidence[];
+  confidence: number;
+}
+
+/** One score per TechnologyProfileFactor (domain/technology.ts TECHNOLOGY_PROFILE_FACTORS), describing the requirement's technical shape - independent of any technology's suitability for it. */
+export type TechnologyProfile = Record<TechnologyProfileFactor, TechnologyProfileFactorScore>;
+
+/**
+ * How much a given production method can lean on what already exists in
+ * this repository (services, APIs, data models, auth, UI components, tests,
+ * CI/CD, workflows, prompts/agents, ...). Never invented: assetLeverage is
+ * null (UNKNOWN) rather than 0 when the repository simply gives no evidence
+ * either way for that technology (e.g. n8n/Intrexx assets are rarely
+ * visible in a git repository) - null is "we don't know", not "we verified
+ * there is none". Deliberately kept OUT of the DU Model: reuse that only
+ * makes ISIFIVE's own production faster must never reduce the DU count
+ * (see ai/prompts.ts REUSE_RULE) - this field feeds the Effort/Technology
+ * Fit models only.
+ */
+export interface ExistingAssetLeverage {
+  technology: TechnologyId;
+  /** 0.0-1.0, or null when the repository gives no evidence either way for this technology. */
+  assetLeverage: number | null;
+  rationale: string;
+  evidence: Evidence[];
+  confidence: number;
+}
+
+/** The AI's qualitative read on one technology for this requirement - narrative only, never a source of the computed relativeEffortFactor. */
+export interface TechnologyNarrative {
+  technology: TechnologyId;
+  advantages: string[];
+  disadvantages: string[];
+}
+
+/**
+ * AI_NATIVE's own human-effort estimate for this requirement, as a range
+ * rather than a false-precision single number - see domain/schemas.ts
+ * EffortEstimateSchema for the full contract on what this counts (human
+ * analysis/briefing/review/correction/testing/deployment time, NOT "the AI
+ * runs for N hours"). This is the Effort Model's (Model C) sole output, and
+ * the baseline every other technology's estimatedHours is scaled from (see
+ * scoring/technologyFitEngine.ts).
+ */
+export interface EffortEstimate {
+  minHours: number;
+  likelyHours: number;
+  maxHours: number;
+  confidence: number;
   rationale: LocalizedText;
 }
 
@@ -183,29 +257,27 @@ export interface RequirementAssessment {
   impactAnalysis: ImpactAnalysis;
   dimensions: DimensionScores;
   overallAssessment: LocalizedText;
-  implementationEstimate: ImplementationEstimate;
+  effortEstimate: EffortEstimate;
+  technologyProfile: TechnologyProfile;
+  existingAssetLeverage: ExistingAssetLeverage[];
+  technologyNarratives: TechnologyNarrative[];
 }
 
 export type DuClass = "XS" | "S" | "M" | "L" | "XL" | "XXL";
 
 /**
- * Estimated internal effort in hours. totalHours is the AI's own
- * ImplementationEstimate.estimatedHours (an independent, experience-based
- * judgment - NOT derived from the DU dimension scores or a DU/hours
- * formula) - this is the number that determines the customer's price. The
- * prompting/development split IS still computed deterministically
- * (scoring/effortEstimator.ts), from how much of the weighted score the
- * aiComplexity dimension itself accounts for. referenceHoursFromDU and
- * hasSignificantDeviationFromDuReference are a separate, DU-based sanity
- * check kept only for internal comparison - never used to override or
- * adjust the AI's own estimate.
+ * @deprecated Superseded by EffortEstimate + TechnologyAssessment
+ * (technology-fit-v2) - the totalHours/promptingHours split this represents
+ * was found to be fachlich nicht belastbar (a high aiComplexity score does
+ * not necessarily mean more prompting time). Kept only so a DuResult read
+ * from a row scored before this change still type-checks; never produced by
+ * new scoring calls. See DuResult.calculationModelVersion.
  */
 export interface TimeEstimate {
   totalHours: number;
   developmentHours: number;
   promptingHours: number;
   rationale: LocalizedText;
-  /** The old DU * HOURS_PER_DU figure - a rough, independent cross-check reference only, not used to compute totalHours. */
   referenceHoursFromDU: number;
   hoursPerDU: number;
   hasSignificantDeviationFromDuReference: boolean;
@@ -214,33 +286,85 @@ export interface TimeEstimate {
 export type AlternativeApproachId = "classicalDevelopment" | "n8n" | "intrexx" | "n8nIntrexxCombined";
 
 /**
- * A rough, evidence-weighted comparison against building this on a
- * low-code/no-code platform instead of custom code - see
- * scoring/effortEstimator.ts for how relativeEffort is derived from the
- * requirement's own per-dimension scores and a per-platform "fit" table.
- * Explicitly a rough estimate, never presented as a verified fact - the fit
- * table itself is a documented, reviewable assumption, not measured data.
+ * @deprecated Superseded by TechnologyAssessment (technology-fit-v2) - this
+ * shape's relativeEffort formula (`1 - fitScore * 0.7`) could only ever
+ * reduce effort relative to classicalDevelopment, structurally incapable of
+ * modeling a technology that costs MORE than AI-native custom development.
+ * Kept only so a DuResult read from a row scored before this change still
+ * type-checks; never produced by new scoring calls.
  */
 export interface AlternativeApproachEstimate {
   id: AlternativeApproachId;
   label: string;
-  /** Fraction of classicalDevelopment's own estimatedHours this approach is expected to need - 1.0 = no difference, 0.4 = 60% faster. */
   relativeEffort: number;
   estimatedHours: number;
+  rationale: string;
+}
+
+/** How the commercial price is derived - see scoring/pricingEngine.ts. Independent of which technology the comparison favors; always priced against ISIFIVE's own AI-native delivery. */
+export type PricingStrategy = "HOURLY" | "DU_FIXED_PRICE";
+
+/**
+ * One row of the technology comparison - AI_NATIVE (pinned to
+ * relativeEffortFactor 1.0, the reference every other row is scaled
+ * against) plus every other modeled technology and supported combination.
+ * relativeEffortFactor, fit, and estimatedHours are all computed
+ * deterministically (scoring/technologyFitEngine.ts) from TechnologyProfile
+ * + the technology's CapabilityProfile + its ExistingAssetLeverage +, for
+ * combinations, integration/operational overhead - never asked of the AI
+ * directly, so the number is reproducible and auditable. advantages/
+ * disadvantages are the AI's own qualitative read (TechnologyNarrative);
+ * evidence/rationale are assembled from the AI's per-factor and
+ * asset-leverage evidence, never invented.
+ */
+export interface TechnologyAssessment {
+  technology: TechnologyKey;
+  label: string;
+  /** 0.0-1.0, higher = better fit for this requirement's technical shape. Descriptive only - see relativeEffortFactor for the actual effort comparison. */
+  fit: number;
+  fitConfidence: number;
+  /** 0.0-1.0, or null when no technology in this row has repository evidence either way (UNKNOWN, never assumed 0). Combinations average their members' known values. */
+  assetLeverage: number | null;
+  assetLeverageConfidence: number | null;
+  /** 0 for a single technology; > 0 only for a combination row (domain/technology.ts COMBINATION_INTEGRATION_OVERHEAD/COMBINATION_OPERATIONAL_OVERHEAD). */
+  integrationOverhead: number;
+  operationalOverhead: number;
+  /**
+   * This technology's effort relative to AI_NATIVE's own EffortEstimate -
+   * 1.0 for AI_NATIVE by construction, but otherwise free to land above OR
+   * below 1.0 depending on the actual requirement (clamped only by the
+   * technical guardrail in domain/technology.ts, not by an assumed ceiling
+   * on how much a platform can help or hurt).
+   */
+  relativeEffortFactor: number;
+  estimatedHours: { minHours: number; likelyHours: number; maxHours: number };
+  advantages: string[];
+  disadvantages: string[];
+  evidence: Evidence[];
+  /** Short, deterministically generated explanation naming the requirement characteristics that drove this technology's fit - not free-form AI prose, so it stays traceable to the actual computation. */
   rationale: string;
 }
 
 export interface DuResult {
   weightedScore: number;
   duClass: DuClass;
+  /** null for XXL - no artificially precise extrapolated count is produced; decomposition into smaller, separately estimable requirements is recommended instead (see determineScoringStatus). */
   developmentUnits: number | null;
-  price: number | null; // null when developmentUnits is null or no price configured
+  price: number | null; // null when no price is computable under pricingStrategy (e.g. DU_FIXED_PRICE with developmentUnits null) or no price configured
+  pricingStrategy: PricingStrategy;
   overallConfidence: number;
   confidenceLevel: "HIGH" | "MEDIUM" | "LOW";
-  /** True only for XXL - developmentUnits/price are an extrapolated order-of-magnitude estimate beyond the normal class table, not a firm number. Decomposition is still recommended regardless (see scoring/duEngine.ts determineScoringStatus). */
+  /** True only for XXL - developmentUnits is null and decomposition is recommended regardless of any other field here (see scoring/duEngine.ts determineScoringStatus). */
   isRoughEstimate: boolean;
-  timeEstimate: TimeEstimate;
-  alternativeApproaches: AlternativeApproachEstimate[];
+  /** Absent (legacy-v1) for a DuResult computed before this change - see calculationModelVersion. */
+  effortEstimate?: EffortEstimate;
+  technologyComparison?: TechnologyAssessment[];
+  /** Absent means this DuResult was computed by the pre-technology-fit engine ("legacy-v1") - only timeEstimate/alternativeApproaches are populated in that case, never effortEstimate/technologyComparison. */
+  calculationModelVersion?: "technology-fit-v2";
+  /** @deprecated legacy-v1 only - see TimeEstimate. */
+  timeEstimate?: TimeEstimate;
+  /** @deprecated legacy-v1 only - see AlternativeApproachEstimate. */
+  alternativeApproaches?: AlternativeApproachEstimate[];
 }
 
 export interface ConfidenceAssessment {
@@ -435,6 +559,28 @@ export interface RequirementContext {
   errorMessage: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Calibration data (section 19 of the technology-fit-v2 spec) - today's
+// CapabilityProfile/overhead constants (domain/technology.ts) are explicitly
+// labeled hypotheses (CALIBRATION_STATUS = "INITIAL_HYPOTHESIS"). This
+// records what was actually predicted vs. what actually happened per
+// requirement, so they can be recalibrated later against real ISIFIVE
+// project outcomes. No self-learning/auto-adjustment is implemented yet -
+// this is data collection only.
+// ---------------------------------------------------------------------------
+
+/** One real outcome recorded against a past ScoringResult - see store/ActualEffortStore.ts. */
+export interface ActualEffortRecord {
+  id: string;
+  scoringId: string;
+  actualHumanHours: number;
+  /** Which production method was actually used to deliver this. */
+  actualImplementationMethod: TechnologyKey;
+  /** Free-text note on rework/bugfix/acceptance-iteration effort not captured by actualHumanHours alone, if any. */
+  notes: string | null;
+  recordedAt: string;
 }
 
 // ---------------------------------------------------------------------------

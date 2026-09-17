@@ -64,6 +64,13 @@ export function ManagementReport({ result }: Props) {
   );
   const alternativesAreClose = bestAlternative !== null && bestAlternative.relativeEffort >= 0.6;
 
+  const technologyAlternatives = (du.technologyComparison ?? []).filter((a) => a.technology !== "AI_NATIVE");
+  const bestTechnologyAlternative = technologyAlternatives.reduce<(typeof technologyAlternatives)[number] | null>(
+    (best, a) => (best === null || a.relativeEffortFactor < best.relativeEffortFactor ? a : best),
+    null,
+  );
+  const technologyAlternativesAreClose = bestTechnologyAlternative === null || bestTechnologyAlternative.relativeEffortFactor >= 0.85;
+
   return (
     <div className="card report">
       <div className="actions" style={{ marginTop: 0, justifyContent: "space-between" }}>
@@ -103,10 +110,7 @@ export function ManagementReport({ result }: Props) {
           </div>
           <div className="report-summary-item">
             <small>Development Units</small>
-            <b>
-              {du.isRoughEstimate ? "~" : ""}
-              {du.developmentUnits ?? "–"} DU
-            </b>
+            <b>{du.developmentUnits !== null ? `${du.developmentUnits} DU` : "Zerlegung erforderlich"}</b>
           </div>
           <div className="report-summary-item">
             <small>Preis</small>
@@ -176,9 +180,45 @@ export function ManagementReport({ result }: Props) {
         </div>
       )}
 
+      {view === "internal" && du.effortEstimate && (
+        <div className="report-section">
+          <h4>KI-native Aufwandsschätzung (Personalzeit)</h4>
+          <p className="report-note" style={{ marginBottom: 10 }}>
+            Diese Spanne ist Personalzeit (Analyse, Briefing/Steuerung der Coding Agents, Review, Korrekturen,
+            individuelle Entwicklungsanteile, Tests, Deployment) - nicht KI-Rechenzeit. Reine KI-API-Kosten werden
+            separat unter "KI-Kosten" erfasst. Diese Schätzung ist eine eigenständige Experten-Einschätzung für genau
+            diese Anforderung - bewusst NICHT aus der DU-Klasse abgeleitet (siehe DU-Bewertung oben).
+          </p>
+          <div className="report-summary-grid">
+            <div className="report-summary-item">
+              <small>Spanne</small>
+              <b>
+                {du.effortEstimate.minHours.toFixed(0)}–{du.effortEstimate.maxHours.toFixed(0)} Std.
+              </b>
+            </div>
+            <div className="report-summary-item">
+              <small>Wahrscheinlich</small>
+              <b>{du.effortEstimate.likelyHours.toFixed(0)} Std.</b>
+            </div>
+            <div className="report-summary-item">
+              <small>Effort Confidence</small>
+              <b>{Math.round(du.effortEstimate.confidence * 100)}%</b>
+            </div>
+          </div>
+          <p className="report-note">{du.effortEstimate.rationale.de}</p>
+          <p className="report-note">
+            Der Preis oben ergibt sich {du.pricingStrategy === "HOURLY"
+              ? `direkt aus ${du.effortEstimate.likelyHours.toFixed(0)} Std. × konfiguriertem Stundensatz`
+              : "aus der DU-Anzahl × einem konfigurierten Festpreis pro DU"}
+            . DU-Confidence ({Math.round(du.overallConfidence * 100)}%) und Effort Confidence sind bewusst getrennte
+            Größen - eine sichere DU-Einstufung bedeutet nicht automatisch eine sichere Aufwandsschätzung.
+          </p>
+        </div>
+      )}
+
       {view === "internal" && du.timeEstimate && (
         <div className="report-section">
-          <h4>Interner Personalaufwand (Schätzung)</h4>
+          <h4>Interner Personalaufwand (Schätzung, älteres Berechnungsmodell)</h4>
           <p className="report-note" style={{ marginBottom: 10 }}>
             Beide Werte sind Personalzeit (Mitarbeiter), keine KI-Rechenzeit - die KI selbst "kostet" hier keine
             Stunden, sondern nur die separat unter "KI-Kosten" erfasste API-Nutzung. Der Unterschied ist, WIE die
@@ -220,9 +260,79 @@ export function ManagementReport({ result }: Props) {
         </div>
       )}
 
-      {du.alternativeApproaches && du.alternativeApproaches.length > 0 ? (
+      {du.technologyComparison && du.technologyComparison.length > 0 ? (
         <div className="report-section">
-          <h4>Transparenter Vergleich der Umsetzungsansätze</h4>
+          <h4>Technologievergleich</h4>
+          <p className="report-note">
+            {technologyAlternativesAreClose
+              ? "Für diesen Umfang ist der Unterschied zu Low-Code-Plattformen wie n8n oder Intrexx gering - die KI-native Individualentwicklung bietet Ihnen die oben genannten Vorteile ohne nennenswerten Aufpreis."
+              : "Je nach Anforderung kann eine Low-Code-Plattform wie n8n oder Intrexx mehr oder weniger Aufwand bedeuten als unsere KI-native Individualentwicklung - wir zeigen das hier bewusst in beide Richtungen."}
+            {" "}Grobe, evidenzbasierte Einschätzung relativ zur KI-nativen Individualentwicklung (Referenzwert, 100%) -
+            kein Ersatz für eine belastbare Machbarkeitsprüfung je Plattform. Keine Technologie wird hier als
+            "beste" markiert.
+          </p>
+          <div className="approach-table-wrap">
+            <table className="approach-table">
+              <thead>
+                <tr>
+                  <th>Ansatz</th>
+                  <th>Aufwand im Vergleich</th>
+                  {view === "internal" && <th>Std. (wahrsch.)</th>}
+                  {view === "internal" && <th>Fit</th>}
+                  {view === "internal" && <th>Bestehende Assets</th>}
+                  <th>Vorteile</th>
+                  <th>Nachteile</th>
+                </tr>
+              </thead>
+              <tbody>
+                {du.technologyComparison.map((tech) => {
+                  const isBaseline = tech.technology === "AI_NATIVE";
+                  const percent = Math.round(tech.relativeEffortFactor * 100);
+                  return (
+                    <tr key={tech.technology} className={isBaseline ? "baseline" : ""}>
+                      <td>{tech.label}</td>
+                      <td>
+                        <div className="effort-bar-cell">
+                          <div className="effort-bar-track">
+                            <div
+                              className={`effort-bar-fill ${
+                                isBaseline ? "baseline" : percent > 100 ? "over-baseline" : ""
+                              }`}
+                              style={{ width: `${Math.min(percent, 100)}%` }}
+                            />
+                          </div>
+                          <span className="effort-bar-label">{percent}%</span>
+                        </div>
+                      </td>
+                      {view === "internal" && <td>{tech.estimatedHours.likelyHours.toFixed(0)} Std.</td>}
+                      {view === "internal" && <td>{Math.round(tech.fit * 100)}%</td>}
+                      {view === "internal" && (
+                        <td>{tech.assetLeverage !== null ? `${Math.round(tech.assetLeverage * 100)}%` : "unbekannt"}</td>
+                      )}
+                      <td>
+                        <ul className="tech-advantage-list">
+                          {tech.advantages.map((a, i) => (
+                            <li key={i}>{a}</li>
+                          ))}
+                        </ul>
+                      </td>
+                      <td>
+                        <ul className="tech-disadvantage-list">
+                          {tech.disadvantages.map((d, i) => (
+                            <li key={i}>{d}</li>
+                          ))}
+                        </ul>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : du.alternativeApproaches && du.alternativeApproaches.length > 0 ? (
+        <div className="report-section">
+          <h4>Transparenter Vergleich der Umsetzungsansätze (älteres Berechnungsmodell)</h4>
           <p className="report-note">
             {alternativesAreClose
               ? "Für diesen Umfang ist der Unterschied zu Low-Code-Plattformen wie n8n oder Intrexx gering - die maßgeschneiderte Umsetzung bietet Ihnen die oben genannten Vorteile ohne nennenswerten Aufpreis."

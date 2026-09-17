@@ -298,12 +298,53 @@ Suggested decomposition (impactAnalysis.suggestedDecomposition):
 - Never mention Development Units, a DU class/size, or a price in a candidate's title or description - describe what it does, not how much it costs. You are never told and must never guess the DU class this requirement will receive.
 `.trim();
 
-const IMPLEMENTATION_TIME_RULE = `
-Independent implementation time estimate (implementationEstimate):
-- This is a SEPARATE exercise from the eight dimension scores above - do not derive it from them, do not compute it as a function of any score, and do not try to guess or reverse-engineer what DU class this requirement would fall into. Estimate it the way an experienced engineer or tech lead would when sizing a real ticket: how many hours would a capable development team (including AI-assisted work) actually need to implement this specific requirement, end to end, in THIS specific repository.
-- Ground it in concrete things: what already exists and can be reused (less time), what's genuinely new or touches unfamiliar/fragile parts of this codebase (more time), integration and testing effort, and your general knowledge of how long comparable real-world software tasks take. Two requirements that scored the same on the eight dimensions can legitimately get different hour estimates if their actual implementation shape differs.
+const EFFORT_ESTIMATE_RULE = `
+Independent AI-native effort estimate (effortEstimate):
+- This is a SEPARATE exercise from the eight dimension scores above - do not derive it from them, do not compute it as a function of any score, and do not try to guess or reverse-engineer what DU class this requirement would fall into. Estimate it the way an experienced engineer or tech lead would when sizing a real ticket: how many HUMAN hours would AI_NATIVE production (see the anti-bias rule below - this is git-based custom development with coding agents like Claude Code, not classical unassisted manual coding) actually need for this specific requirement, end to end, in THIS specific repository.
+- Count ONLY human time: analysis, briefing/steering the coding agents, review, corrections, manual/individual development work that agents cannot do well, testing/QA, deployment/integration. Never state or imply "the AI works for N hours" - the agents' own compute time is not what is being estimated here.
+- Give a genuine range (minHours/maxHours), not a single number dressed up as a range - width should reflect your actual uncertainty about this specific requirement, not a fixed percentage padding. likelyHours is your single best guess, which should usually (not always) sit somewhere between minHours and maxHours.
+- Ground it in concrete things: what already exists and can be reused (less time), what's genuinely new or touches unfamiliar/fragile parts of this codebase (more time), integration and testing effort, and your general knowledge of how long comparable real-world software tasks take. Two requirements that scored the same on the eight dimensions can legitimately get different estimates if their actual implementation shape differs.
 - Give your honest professional best guess, not a padded or deliberately conservative number - this directly determines the price the application quotes.
-- The rationale must explain what specifically drives the hour estimate (setup, integration points, testing, edge cases, ...) and, where relevant, name what makes this faster or slower than comparable work - it must not simply restate a dimension's rationale.
+- The rationale must explain what specifically drives the corridor width and the likely figure (setup, integration points, testing, edge cases, ...) - it must not simply restate a dimension's rationale.
+`.trim();
+
+const TECHNOLOGY_PROFILE_FACTOR_DESCRIPTIONS = `
+- uiForms: how much of this requirement is building forms/UI screens.
+- crudDataManagement: how much is standard create/read/update/delete data management.
+- workflowOrchestration: how much is sequencing steps/triggers/conditions across a process.
+- standardConnectors: how much relies on well-known SaaS/API connectors rather than bespoke integration code.
+- customIntegrations: how much requires bespoke, non-standard integration work.
+- customBusinessLogic: how much is genuinely custom business rules/logic specific to this organization.
+- aiAgentsRag: how much involves AI agents, RAG, tool calling, or similar AI-native functionality.
+- complexStateManagement: how much requires tracking/coordinating complex, evolving state.
+- customAlgorithms: how much requires bespoke computational/algorithmic logic (not CRUD, not a standard workflow step).
+- testingRequirements: how demanding the testing/verification needs are.
+- deploymentComplexity: how demanding the deployment/operational rollout is.
+- expectedChangeFrequency: how often this is expected to change/evolve after initial delivery.
+`.trim();
+
+const TECHNOLOGY_PROFILE_RULE = `
+Technology profile (technologyProfile) - describes THIS requirement's technical shape, completely independent of which production method (AI-native custom code, n8n, Intrexx) would build it. Score each of these 12 factors 0 (practically not relevant here) to 5 (very strongly characterizes this requirement), each with its own rationale (German), evidence, and confidence - grounded in the requirement, acceptance criteria, resolved knowledge, and the repository, never guessed generically:
+${TECHNOLOGY_PROFILE_FACTOR_DESCRIPTIONS}
+Do NOT use this to state or imply a fit percentage, a relative effort, or which technology is better - the application computes that deterministically from these scores. Your job here is only to characterize the requirement itself.
+`.trim();
+
+const EXISTING_ASSET_LEVERAGE_RULE = `
+Existing asset leverage (existingAssetLeverage) - for EACH of AI_NATIVE, N8N, and INTREXX, judge how much that production method could lean on what already exists in this repository (services, APIs, data models, auth/roles, UI components, tests, CI/CD, integrations, vector stores, agents, prompts, RAG components, reusable libraries, ...):
+- Ground this ONLY in actual evidence from the repository context provided below - never invent an asset that is not actually present.
+- AI_NATIVE can usually be judged directly from the repository's own code. N8N and Intrexx assets (existing workflows, apps built on those platforms) are rarely visible in a git repository - when you find no evidence either way, set assetLeverage to null (UNKNOWN) with a low confidence, and say so in the rationale. Do NOT default it to 0 - null and 0 mean different things (no evidence found vs. confirmed no reusable assets).
+- This is deliberately separate from the DU dimension scores above: existing assets that only make production faster/easier must never change a DU dimension score (see the reuse rule above) - they only affect this field and, downstream, the Effort/Technology Fit models the application computes from it.
+`.trim();
+
+const TECHNOLOGY_NARRATIVE_RULE = `
+Technology narratives (technologyNarratives) - for EACH of AI_NATIVE, N8N, and INTREXX, give 1-4 concrete advantages and 1-4 concrete disadvantages of that production method specifically for THIS requirement (German). Be specific to this requirement's actual technical shape - not generic platform marketing points. Do not state a percentage, a relative effort, or an hours figure here - that is computed by the application from technologyProfile/existingAssetLeverage, not from this narrative text.
+`.trim();
+
+const ANTI_BIAS_RULE = `
+Anti-bias rule for the technology assessment - read this carefully, it corrects a documented prior failure mode:
+- Low-code/no-code is NOT automatically faster than AI-native individual development. AI-native individual development is NOT automatically faster than low-code/no-code.
+- Judge only the concrete requirement, existing assets, integrations, technical constraints, and each production method's actual fit - never a generic prior about which category of tool is "usually" faster.
+- AI_NATIVE means KI-beschleunigte Entwicklung mit Coding Agents (git-based custom development with coding agents like Claude Code doing the generation/editing, a human handling briefing, architecture decisions, review, and correction) - it must NOT be equated with classical, unassisted manual software development. Do not implicitly assume AI_NATIVE is slow just because "custom code" sounds slower than "low-code platform": AI_NATIVE is often very strong specifically at custom business logic, custom integrations, AI/agents/RAG, custom algorithms, complex state, and automatable testing - and low-code platforms are often very strong specifically at standard forms/CRUD/workflow orchestration/standard connectors. Score technologyProfile and existingAssetLeverage on their own merits for this specific requirement; do not let either technology's general reputation substitute for that.
 `.trim();
 
 /**
@@ -320,7 +361,9 @@ export function buildAssessmentPrompt(
   knowledge: ResolvedRequirementKnowledge,
   qualityLevel: QualityLevel,
 ): PromptParts {
-  const system = `You are a senior software architect performing a Requirement Impact Analysis and DU scoring for the ISIFIVE DU Calculator, in one pass. First determine what already exists, what can be reused, what must be modified, and what must be newly created for this requirement against a repository you have already profiled. Then, using that same analysis, score each of the eight fixed dimensions 1 (very low) to 5 (very high), with a summary, a detailed rationale, evidence, a confidence (0.0-1.0), and any missing information that limits your confidence - plus one overall assessment synthesizing all eight dimensions. You NEVER decide a final Development Unit count - that class/count is computed deterministically by the application from your per-dimension scores. You DO separately provide an independent implementation-hour estimate (implementationEstimate) - a distinct professional judgment, not derived from the dimension scores - which the application uses together with a configured billing rate to compute the actual price; see the dedicated rule for it below.
+  const system = `You are a senior software architect performing a Requirement Impact Analysis, DU scoring, and technology/effort assessment for the ISIFIVE DU Calculator, in one pass. First determine what already exists, what can be reused, what must be modified, and what must be newly created for this requirement against a repository you have already profiled. Then, using that same analysis, score each of the eight fixed dimensions 1 (very low) to 5 (very high), with a summary, a detailed rationale, evidence, a confidence (0.0-1.0), and any missing information that limits your confidence - plus one overall assessment synthesizing all eight dimensions. You NEVER decide a final Development Unit count - that class/count is computed deterministically by the application from your per-dimension scores alone.
+
+Separately - and this is NOT a function of the eight dimension scores - you also assess: an independent AI-native human-effort estimate (effortEstimate), the requirement's technical shape across 12 factors (technologyProfile), how much each production method (AI-native custom code, n8n, Intrexx) can lean on what already exists in this repository (existingAssetLeverage), and a qualitative advantages/disadvantages read per production method (technologyNarratives). The application computes the actual relative effort and price deterministically from these - you never state a fit percentage, a relative effort, a DU class, or a price yourself. See the dedicated rules for all of this below.
 
 ${DIMENSION_DESCRIPTIONS}
 
@@ -336,7 +379,15 @@ ${ASSUMPTION_AWARE_SCORING_RULE}
 
 ${DECOMPOSITION_RULE}
 
-${IMPLEMENTATION_TIME_RULE}
+${EFFORT_ESTIMATE_RULE}
+
+${TECHNOLOGY_PROFILE_RULE}
+
+${EXISTING_ASSET_LEVERAGE_RULE}
+
+${TECHNOLOGY_NARRATIVE_RULE}
+
+${ANTI_BIAS_RULE}
 
 ${QUALITY_PROFILES[qualityLevel].rationaleGuidance}
 

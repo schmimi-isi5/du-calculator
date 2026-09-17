@@ -216,23 +216,20 @@ export type DimensionScores = Record<DimensionKey, DimensionScore>;
 
 export type DuClass = "XS" | "S" | "M" | "L" | "XL" | "XXL";
 
-/** Estimated internal effort in hours - a business assumption (hoursPerDU), never a measured fact. See backend/src/scoring/effortEstimator.ts. */
+/** @deprecated legacy-v1 only - see DuResult.calculationModelVersion. Superseded by EffortEstimate. */
 export interface TimeEstimate {
   totalHours: number;
   developmentHours: number;
   promptingHours: number;
-  /** The AI's own explanation of what drives its independent hour estimate - not derived from the dimension scores. */
   rationale: LocalizedText;
-  /** DU-based cross-check figure (developmentUnits * hoursPerDU) - a reference only, never the source of totalHours. */
   referenceHoursFromDU: number;
   hoursPerDU: number;
-  /** True when totalHours diverges from referenceHoursFromDU by more than 50% - a signal to review, not an error. */
   hasSignificantDeviationFromDuReference: boolean;
 }
 
 export type AlternativeApproachId = "classicalDevelopment" | "n8n" | "intrexx" | "n8nIntrexxCombined";
 
-/** A rough, evidence-weighted comparison against building this on a low-code/no-code platform instead of custom code. */
+/** @deprecated legacy-v1 only - see DuResult.calculationModelVersion. Superseded by TechnologyAssessment. */
 export interface AlternativeApproachEstimate {
   id: AlternativeApproachId;
   label: string;
@@ -241,17 +238,75 @@ export interface AlternativeApproachEstimate {
   rationale: string;
 }
 
+export const TECHNOLOGY_IDS = ["AI_NATIVE", "N8N", "INTREXX"] as const;
+export type TechnologyId = (typeof TECHNOLOGY_IDS)[number];
+export type TechnologyKey = TechnologyId | "N8N_INTREXX";
+
+export const TECHNOLOGY_PROFILE_FACTORS = [
+  "uiForms",
+  "crudDataManagement",
+  "workflowOrchestration",
+  "standardConnectors",
+  "customIntegrations",
+  "customBusinessLogic",
+  "aiAgentsRag",
+  "complexStateManagement",
+  "customAlgorithms",
+  "testingRequirements",
+  "deploymentComplexity",
+  "expectedChangeFrequency",
+] as const;
+export type TechnologyProfileFactor = (typeof TECHNOLOGY_PROFILE_FACTORS)[number];
+
+/** AI_NATIVE's own human-effort corridor for this requirement - not derived from the DU dimension scores. See backend/src/scoring/effortEstimator.ts. */
+export interface EffortEstimate {
+  minHours: number;
+  likelyHours: number;
+  maxHours: number;
+  confidence: number;
+  rationale: LocalizedText;
+}
+
+/** How the commercial price is derived - see backend/src/scoring/pricingEngine.ts. */
+export type PricingStrategy = "HOURLY" | "DU_FIXED_PRICE";
+
+/** One row of the technology comparison - see backend/src/domain/types.ts TechnologyAssessment for the full computation contract. */
+export interface TechnologyAssessment {
+  technology: TechnologyKey;
+  label: string;
+  fit: number;
+  fitConfidence: number;
+  assetLeverage: number | null;
+  assetLeverageConfidence: number | null;
+  integrationOverhead: number;
+  operationalOverhead: number;
+  relativeEffortFactor: number;
+  estimatedHours: { minHours: number; likelyHours: number; maxHours: number };
+  advantages: string[];
+  disadvantages: string[];
+  evidence: Evidence[];
+  rationale: string;
+}
+
 export interface DuResult {
   weightedScore: number;
   duClass: DuClass;
+  /** null for XXL - no artificially precise extrapolated count is produced; decomposition is recommended instead. */
   developmentUnits: number | null;
   price: number | null;
+  pricingStrategy: PricingStrategy;
   overallConfidence: number;
   confidenceLevel: "HIGH" | "MEDIUM" | "LOW";
-  /** True only for XXL - developmentUnits/price are a rough, extrapolated order-of-magnitude estimate, not a firm number. Decomposition is still recommended regardless. */
+  /** True only for XXL - developmentUnits is null and decomposition is recommended regardless of any other field here. */
   isRoughEstimate: boolean;
-  timeEstimate: TimeEstimate;
-  alternativeApproaches: AlternativeApproachEstimate[];
+  /** Absent for a DuResult computed before this change (calculationModelVersion undefined = "legacy-v1"). */
+  effortEstimate?: EffortEstimate;
+  technologyComparison?: TechnologyAssessment[];
+  calculationModelVersion?: "technology-fit-v2";
+  /** @deprecated legacy-v1 only. */
+  timeEstimate?: TimeEstimate;
+  /** @deprecated legacy-v1 only. */
+  alternativeApproaches?: AlternativeApproachEstimate[];
 }
 
 export interface ConfidenceAssessment {

@@ -140,6 +140,23 @@ CREATE TABLE IF NOT EXISTS app_settings (
   value TEXT NOT NULL,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Calibration data collection (technology-fit-v2 spec section 19). Today's
+-- TechnologyCapabilityProfile/overhead constants (domain/technology.ts) are
+-- explicitly labeled INITIAL_HYPOTHESIS - this table records what actually
+-- happened per delivered requirement, so they can later be recalibrated
+-- against real ISIFIVE project outcomes. No self-learning/auto-adjustment
+-- reads from this table yet - it exists for data collection only.
+CREATE TABLE IF NOT EXISTS actual_effort_records (
+  id UUID PRIMARY KEY,
+  scoring_id UUID NOT NULL REFERENCES scoring_results(id),
+  actual_human_hours NUMERIC(10, 2) NOT NULL,
+  actual_implementation_method TEXT NOT NULL,
+  notes TEXT,
+  recorded_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_actual_effort_records_scoring_id ON actual_effort_records (scoring_id);
 `;
 
 export async function runMigrations(): Promise<void> {

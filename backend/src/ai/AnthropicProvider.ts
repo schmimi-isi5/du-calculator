@@ -32,7 +32,11 @@ import {
 import { recordUsage } from "./usageTracker.js";
 
 const DEFAULT_MODEL = "claude-opus-5";
-const MAX_TOKENS = 16000;
+// Bumped from 16000: RequirementAssessmentSchema now also carries a 12-factor
+// technologyProfile (score+rationale+evidence+confidence each), per-technology
+// existingAssetLeverage and technologyNarratives, and the effort corridor -
+// substantially more structured output than before.
+const MAX_TOKENS = 32000;
 
 // Repository analysis has no per-run QualityLevel to read (the file excerpts
 // it works from are fixed at analysis time, before any requirement exists) -
