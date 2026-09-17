@@ -4,6 +4,7 @@
 // validation instead of silently producing fabricated data.
 
 import { z } from "zod";
+import { TECHNOLOGY_IDS, TECHNOLOGY_PROFILE_FACTORS } from "./technology.js";
 
 export const LocalizedTextSchema = z.object({
   en: z.string().describe("English version of this text."),
@@ -114,24 +115,105 @@ export const ScoringOutputSchema = z.object({
 });
 
 /**
- * An independent, experience-based time estimate - deliberately NOT derived
- * from the DU dimension scores or any DU/hours formula. This is the AI
- * reasoning the way a senior engineer or tech lead would when estimating a
- * ticket: how long would this realistically take, given comparable
- * real-world work and this specific repository's actual complexity/tech
- * stack. The application still cross-checks this against a separate,
- * DU-based reference internally (see scoring/effortEstimator.ts) - this
- * field is the one that actually determines the customer's quoted price.
+ * @deprecated Superseded by EffortEstimateSchema (a min/likely/max corridor
+ * instead of a single number). No longer referenced by
+ * RequirementAssessmentSchema - kept only as documentation of the shape a
+ * pre-technology-fit-v2 stored assessment used to have.
  */
 export const ImplementationEstimateSchema = z.object({
-  estimatedHours: z
+  estimatedHours: z.number().min(0),
+  rationale: LocalizedTextSchema,
+});
+
+// ---------------------------------------------------------------------------
+// Technology Fit Model (Model B) + Effort Model (Model C) schemas.
+// See domain/technology.ts for the factor list and CapabilityProfile
+// hypotheses, and ai/prompts.ts for the rules that ground these in the
+// actual requirement/repository rather than a generic guess.
+// ---------------------------------------------------------------------------
+
+export const TechnologyIdSchema = z.enum(TECHNOLOGY_IDS);
+
+const TechnologyProfileFactorSchema = z.object({
+  score: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]).describe(
+    "0 = practically not relevant to this requirement, 5 = very strongly characterizes it.",
+  ),
+  rationale: z.string().describe("Why this factor scores this way for THIS requirement, in German."),
+  evidence: z.array(EvidenceSchema),
+  confidence: z.number().min(0).max(1),
+});
+
+/**
+ * One score per requirement-characteristic factor (domain/technology.ts
+ * TECHNOLOGY_PROFILE_FACTORS) - describes the requirement's technical
+ * shape, independent of any technology's suitability for it. The
+ * deterministic Technology Fit Engine (scoring/technologyFitEngine.ts)
+ * combines this with each technology's CapabilityProfile; the AI never
+ * computes or states a fit percentage or relative effort itself.
+ */
+export const TechnologyProfileSchema = z.object(
+  Object.fromEntries(TECHNOLOGY_PROFILE_FACTORS.map((factor) => [factor, TechnologyProfileFactorSchema])) as Record<
+    (typeof TECHNOLOGY_PROFILE_FACTORS)[number],
+    typeof TechnologyProfileFactorSchema
+  >,
+);
+
+/**
+ * How much a given production method can lean on what already exists in
+ * this repository - grounded ONLY in actual repository evidence (services,
+ * APIs, data models, auth, UI components, tests, CI/CD, workflows,
+ * prompts/agents, reusable libraries, ...). Use null (UNKNOWN) rather than
+ * 0 when the repository simply gives no evidence either way for this
+ * technology - do not invent evidence, and do not treat "no evidence
+ * found" as "confirmed zero reuse".
+ */
+export const ExistingAssetLeverageSchema = z.object({
+  technology: TechnologyIdSchema,
+  assetLeverage: z
     .number()
     .min(0)
-    .describe(
-      "Best-guess total hours a capable development team (including AI-assisted work) would need to implement this requirement end-to-end. An independent professional estimate, not derived from any DU/scope formula.",
-    ),
+    .max(1)
+    .nullable()
+    .describe("0.0-1.0, or null (UNKNOWN) when the repository gives no evidence either way for this technology."),
+  rationale: z.string().describe("In German - grounded in the cited evidence, or explaining why this is UNKNOWN."),
+  evidence: z.array(EvidenceSchema),
+  confidence: z.number().min(0).max(1),
+});
+
+/**
+ * Qualitative read on one technology for this specific requirement -
+ * narrative only. The actual relativeEffortFactor number is always computed
+ * deterministically by the app (scoring/technologyFitEngine.ts) from
+ * TechnologyProfile + the technology's CapabilityProfile - never asked of
+ * the AI directly, so it stays reproducible and auditable.
+ */
+export const TechnologyNarrativeSchema = z.object({
+  technology: TechnologyIdSchema,
+  advantages: z
+    .array(z.string())
+    .describe("In German. 1-4 concrete advantages of this technology for THIS specific requirement."),
+  disadvantages: z
+    .array(z.string())
+    .describe("In German. 1-4 concrete disadvantages of this technology for THIS specific requirement."),
+});
+
+/**
+ * AI_NATIVE's own human-effort estimate for this requirement, as a range
+ * instead of a falsely precise single number. Counts ONLY human time:
+ * analysis, briefing/steering coding agents, review, corrections, manual/
+ * individual development work, testing/QA, deployment/integration - never
+ * "the AI works for N hours". This is the sole basis every other
+ * technology's estimatedHours is scaled from (scoring/technologyFitEngine.ts) -
+ * deliberately NOT derived from the DU dimension scores or any DU/hours
+ * formula.
+ */
+export const EffortEstimateSchema = z.object({
+  minHours: z.number().min(0).describe("Optimistic but plausible human-hours bound - not a floor with no basis."),
+  likelyHours: z.number().min(0).describe("Your single best-guess human-hours estimate."),
+  maxHours: z.number().min(0).describe("Pessimistic but plausible human-hours bound, not a worst-case scare number."),
+  confidence: z.number().min(0).max(1),
   rationale: LocalizedTextSchema.describe(
-    "2-4 sentences per language explaining the hour estimate specifically - what drives the time (setup, integration points, testing, edge cases, unfamiliar vs. well-trodden parts of the codebase, ...) and how it compares to similar work you're aware of. Must not just restate the dimension rationales - this is an independent estimation, not a summary of the scores.",
+    "2-4 sentences per language explaining what drives the corridor width and the likely figure specifically - setup, integration points, testing, edge cases, unfamiliar vs. well-trodden parts of the codebase, comparable real-world work you're aware of. Must not just restate a dimension rationale - this is an independent estimation.",
   ),
 });
 
@@ -147,7 +229,14 @@ export const RequirementAssessmentSchema = z.object({
   overallAssessment: LocalizedTextSchema.describe(
     "2-4 sentences per language characterizing the overall scope, complexity, and risk across all eight dimensions together.",
   ),
-  implementationEstimate: ImplementationEstimateSchema,
+  effortEstimate: EffortEstimateSchema,
+  technologyProfile: TechnologyProfileSchema,
+  existingAssetLeverage: z
+    .array(ExistingAssetLeverageSchema)
+    .describe("Exactly one entry per technology in TECHNOLOGY_IDS (AI_NATIVE, N8N, INTREXX)."),
+  technologyNarratives: z
+    .array(TechnologyNarrativeSchema)
+    .describe("Exactly one entry per technology in TECHNOLOGY_IDS (AI_NATIVE, N8N, INTREXX)."),
 });
 
 // ---------------------------------------------------------------------------

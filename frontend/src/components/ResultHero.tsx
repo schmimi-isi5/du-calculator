@@ -39,13 +39,9 @@ export function ResultHero({ result }: Props) {
       )}
 
       <div className="du-value">
-        {du?.isRoughEstimate && "~"}
-        {du?.developmentUnits ?? "–"} DU
+        {du && du.developmentUnits === null ? "Zerlegung erforderlich" : `${du?.developmentUnits ?? "–"} DU`}
       </div>
-      <div className="du-class">
-        Klasse {du?.duClass ?? "–"}
-        {du?.isRoughEstimate && " · grobe Schätzung"}
-      </div>
+      <div className="du-class">Klasse {du?.duClass ?? "–"}</div>
 
       <div className="kpis">
         <div className="kpi">
@@ -76,7 +72,21 @@ export function ResultHero({ result }: Props) {
           {du?.price !== undefined && du?.price !== null ? `${du.price.toLocaleString("de-DE")} €` : "–"}
         </div>
 
-        {du?.timeEstimate && (
+        {du?.effortEstimate && (
+          <>
+            <small style={{ display: "block", marginTop: 10 }}>Geschätzter KI-nativer Personalaufwand</small>
+            <div style={{ fontSize: 16, fontWeight: 800 }}>
+              {du.effortEstimate.minHours.toFixed(0)}–{du.effortEstimate.maxHours.toFixed(0)} Std.{" "}
+              <span style={{ fontWeight: 600, opacity: 0.85 }}>(wahrsch. {du.effortEstimate.likelyHours.toFixed(0)} Std.)</span>
+            </div>
+            <div style={{ fontSize: 11, opacity: 0.85 }}>
+              Effort Confidence {Math.round(du.effortEstimate.confidence * 100)}% - eigenständig von der KI geschätzt,
+              nicht aus der DU-Klasse abgeleitet (reine KI-API-Kosten separat unter „KI-Kosten")
+            </div>
+          </>
+        )}
+
+        {!du?.effortEstimate && du?.timeEstimate && (
           <>
             <small style={{ display: "block", marginTop: 10 }}>Geschätzter interner Personalaufwand</small>
             <div style={{ fontSize: 16, fontWeight: 800 }}>{du.timeEstimate.totalHours.toFixed(1)} Std.</div>

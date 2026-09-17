@@ -56,12 +56,13 @@ services:
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://localhost:11434}
       DEFAULT_LLM_MODEL: ${DEFAULT_LLM_MODEL:-}
       LLM_ALLOW_PREMIUM_FALLBACK: ${LLM_ALLOW_PREMIUM_FALLBACK:-}
-      # HOURS_PER_DU is a rough, unmeasured business assumption (default 6 -
-      # DU represents scope/complexity/risk, not time). Customer price is
-      # DERIVED from hours * BILLING_RATE_PER_HOUR (duEngine.ts), not set
-      # independently, so it can never fall below the configured rate.
-      HOURS_PER_DU: ${HOURS_PER_DU:-}
+      # Pricing Model (scoring/pricingEngine.ts) - decoupled from production
+      # effort. See env.example for PRICING_STRATEGY/PRICE_PER_DU details.
+      PRICING_STRATEGY: ${PRICING_STRATEGY:-HOURLY}
       BILLING_RATE_PER_HOUR: ${BILLING_RATE_PER_HOUR:-160}
+      PRICE_PER_DU: ${PRICE_PER_DU:-900}
+      # @deprecated no longer feeds any calculation - kept for backward compatibility.
+      HOURS_PER_DU: ${HOURS_PER_DU:-}
       GIT_CLONE_TIMEOUT_MS: ${GIT_CLONE_TIMEOUT_MS:-60000}
       GIT_MAX_REPO_FILES: ${GIT_MAX_REPO_FILES:-5000}
     expose:

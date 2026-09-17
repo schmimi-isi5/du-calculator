@@ -59,24 +59,45 @@ function parseListEnv(name: string): string[] {
     .filter((entry) => entry.length > 0);
 }
 
+const PRICING_STRATEGIES = ["HOURLY", "DU_FIXED_PRICE"] as const;
+type PricingStrategyEnv = (typeof PRICING_STRATEGIES)[number];
+
+function parsePricingStrategy(): PricingStrategyEnv {
+  const raw = process.env.PRICING_STRATEGY || "HOURLY";
+  if (!PRICING_STRATEGIES.includes(raw as PricingStrategyEnv)) {
+    throw new Error(`Invalid PRICING_STRATEGY: "${raw}" must be one of: ${PRICING_STRATEGIES.join(", ")}.`);
+  }
+  return raw as PricingStrategyEnv;
+}
+
 export const config = {
   port: parseIntEnv("PORT", 4000),
   databaseUrl: requireEnv("DATABASE_URL"),
-  // A rough, operator-tunable business assumption for the internal effort
-  // report (scoring/effortEstimator.ts) - DU explicitly represents scope/
-  // complexity/risk, not time, so there is no measured DU-to-hours
-  // conversion; 6h/DU (~one working day per DU) is a starting default, not
-  // a verified rate. Adjust once real project data gives a better number.
+  // @deprecated No longer feeds any effort/price calculation - the Effort
+  // Model (scoring/effortEstimator.ts) now gets AI_NATIVE's human-hours
+  // corridor directly from the AI's own EffortEstimate, never from
+  // developmentUnits * hoursPerDU. Kept configurable only for backward
+  // compatibility (existing deployments/Coolify configs that set this env
+  // var should not fail startup) - it has no effect on anything computed by
+  // scoring/duEngine.ts, scoring/effortEstimator.ts, or
+  // scoring/pricingEngine.ts.
   hoursPerDU: parsePriceEnv("HOURS_PER_DU", 6) ?? 6,
-  // The customer price is DERIVED from this - developmentUnits × hoursPerDU
-  // × billingRatePerHour (duEngine.ts computeDuResult) - not set
-  // independently of the time it takes to deliver. Replaces the old,
-  // independent PRICE_PER_DU: at its default (300) with the default
-  // hoursPerDU (6), that implied only ~50 €/h, well under any real billing
-  // rate - deriving price from an explicit hourly rate makes that
-  // inconsistency structurally impossible instead of relying on the
-  // operator to keep two unrelated numbers in sync by hand.
+  // See scoring/pricingEngine.ts - the Pricing Model (D) is intentionally
+  // decoupled from the Effort Model (C). Two strategies:
+  //  HOURLY: price = AI_NATIVE's likelyHours × billingRatePerHour (this
+  //    project's default/prior behavior - keeps price tracking actual
+  //    estimated effort).
+  //  DU_FIXED_PRICE: price = developmentUnits × pricePerDU, a purely
+  //    commercial calibration figure with NO implied hours-per-DU
+  //    conversion - null for XXL, since developmentUnits itself is null
+  //    there (no artificially precise DU count to multiply).
+  pricingStrategy: parsePricingStrategy(),
   billingRatePerHour: parsePriceEnv("BILLING_RATE_PER_HOUR", 160) ?? 160,
+  // Only consulted under the DU_FIXED_PRICE strategy - an independent
+  // commercial calibration value, not a DU-to-hours conversion. Default is
+  // a starting point, not a verified figure; adjust freely without it
+  // implying anything about hoursPerDU or billingRatePerHour.
+  pricePerDU: parsePriceEnv("PRICE_PER_DU", 900) ?? 900,
   gitCloneTimeoutMs: parseIntEnv("GIT_CLONE_TIMEOUT_MS", 60_000),
   gitMaxRepoFiles: parseIntEnv("GIT_MAX_REPO_FILES", 5000),
 

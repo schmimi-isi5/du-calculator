@@ -8,6 +8,7 @@ import type { ImpactAnalysis, ScoringResult } from "../domain/types.js";
 import { logger } from "../logging.js";
 import { activeAssumptions } from "../scoring/clarificationGate.js";
 import { computeDuResult, determineScoringStatus } from "../scoring/duEngine.js";
+import { listActualEffortForScoring, recordActualEffort } from "../store/ActualEffortStore.js";
 import { store } from "../store/PostgresScoringStore.js";
 import { asyncHandler } from "./asyncHandler.js";
 import { errorCause } from "./errorCause.js";
@@ -97,12 +98,15 @@ requirementRouter.post("/score", asyncHandler(async (req, res) => {
       requirementContext.model,
       usageContext,
     );
-    const engineResult = computeDuResult(
-      assessment.dimensions,
-      config.billingRatePerHour,
-      config.hoursPerDU,
-      assessment.implementationEstimate,
-    );
+    const engineResult = computeDuResult({
+      scores: assessment.dimensions,
+      effortEstimate: assessment.effortEstimate,
+      technologyProfile: assessment.technologyProfile,
+      existingAssetLeverage: assessment.existingAssetLeverage,
+      technologyNarratives: assessment.technologyNarratives,
+      pricingStrategy: config.pricingStrategy,
+      pricingConfig: { billingRatePerHour: config.billingRatePerHour, pricePerDU: config.pricePerDU },
+    });
 
     // Only assumptions that are actually still active may count - a score
     // that cites a rejected assumption's id is a modeling bug, not a valid
@@ -168,6 +172,57 @@ requirementRouter.get("/:id", asyncHandler(async (req, res) => {
     return;
   }
   res.status(200).json(result);
+}));
+
+// Calibration data collection (technology-fit-v2 spec section 19) - records
+// what actually happened for a delivered requirement, so today's
+// TechnologyCapabilityProfile hypotheses (domain/technology.ts) can later be
+// recalibrated against real outcomes. No self-learning reads from this yet.
+const ACTUAL_IMPLEMENTATION_METHODS = ["AI_NATIVE", "N8N", "INTREXX", "N8N_INTREXX"] as const;
+
+requirementRouter.post("/:id/actual-effort", asyncHandler(async (req, res) => {
+  const id = req.params.id;
+  if (!id) {
+    res.status(400).json({ error: "id is required." });
+    return;
+  }
+  const result = await store.getScoringResult(id);
+  if (!result) {
+    res.status(404).json({ error: "Scoring result not found." });
+    return;
+  }
+
+  const { actualHumanHours, actualImplementationMethod, notes } = req.body ?? {};
+  if (typeof actualHumanHours !== "number" || !Number.isFinite(actualHumanHours) || actualHumanHours < 0) {
+    res.status(400).json({ error: "actualHumanHours must be a non-negative number." });
+    return;
+  }
+  if (!ACTUAL_IMPLEMENTATION_METHODS.includes(actualImplementationMethod)) {
+    res.status(400).json({ error: `actualImplementationMethod must be one of: ${ACTUAL_IMPLEMENTATION_METHODS.join(", ")}.` });
+    return;
+  }
+  if (notes !== undefined && notes !== null && typeof notes !== "string") {
+    res.status(400).json({ error: "notes must be a string if provided." });
+    return;
+  }
+
+  const record = await recordActualEffort({
+    scoringId: id,
+    actualHumanHours,
+    actualImplementationMethod,
+    notes: notes ?? null,
+  });
+  res.status(201).json(record);
+}));
+
+requirementRouter.get("/:id/actual-effort", asyncHandler(async (req, res) => {
+  const id = req.params.id;
+  if (!id) {
+    res.status(400).json({ error: "id is required." });
+    return;
+  }
+  const records = await listActualEffortForScoring(id);
+  res.status(200).json(records);
 }));
 
 function collectOpenQuestions(impact: ImpactAnalysis, scores: ScoringResult["dimensionScores"]): string[] {
