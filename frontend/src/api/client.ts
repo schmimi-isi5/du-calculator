@@ -1,18 +1,23 @@
 import type {
+  ActualEffortRecord,
   AIUsageConfig,
   AIUsageLogEntry,
   AIUsageSummary,
   AssumptionAction,
+  CustomerReport,
   OllamaStatus,
   QualityLevel,
   Requirement,
   RepositorySnapshot,
   RepositorySnapshotSummary,
+  RepositoryStats,
   RequirementContext,
   ScoringHistoryEntry,
   ScoringResult,
+  ScoringStats,
   SelectableModelsResponse,
   SettingsSnapshot,
+  TechnologyKey,
 } from "../types";
 
 export class ApiError extends Error {}
@@ -91,8 +96,9 @@ export function createGreenfieldSnapshot(label?: string): Promise<RepositorySnap
   return postJson<RepositorySnapshot>("/api/repository/greenfield", { label: label || undefined });
 }
 
-export function listRepositorySnapshots(): Promise<RepositorySnapshotSummary[]> {
-  return getJson<RepositorySnapshotSummary[]>("/api/repository");
+export function listRepositorySnapshots(limit?: number): Promise<RepositorySnapshotSummary[]> {
+  const query = limit ? `?limit=${limit}` : "";
+  return getJson<RepositorySnapshotSummary[]>(`/api/repository${query}`);
 }
 
 export function getRepositorySnapshot(id: string): Promise<RepositorySnapshot> {
@@ -151,6 +157,33 @@ export function getScoringHistory(): Promise<ScoringHistoryEntry[]> {
 
 export function getScoringResult(id: string): Promise<ScoringResult> {
   return getJson<ScoringResult>(`/api/requirement/${encodeURIComponent(id)}`);
+}
+
+export function getRepositoryStats(): Promise<RepositoryStats> {
+  return getJson<RepositoryStats>("/api/repository/stats");
+}
+
+export function getRequirementStats(): Promise<ScoringStats> {
+  return getJson<ScoringStats>("/api/requirement/stats");
+}
+
+/** No credentials/auth - security is by the unguessable scoring id only. See backend/src/api/customerReport.ts. */
+export function getCustomerReport(id: string): Promise<CustomerReport> {
+  return getJson<CustomerReport>(`/api/requirement/${encodeURIComponent(id)}/customer-report`);
+}
+
+export interface RecordActualEffortInput {
+  actualHumanHours: number;
+  actualImplementationMethod: TechnologyKey;
+  notes?: string;
+}
+
+export function recordActualEffort(scoringId: string, input: RecordActualEffortInput): Promise<ActualEffortRecord> {
+  return postJson<ActualEffortRecord>(`/api/requirement/${encodeURIComponent(scoringId)}/actual-effort`, input);
+}
+
+export function getActualEffortRecords(scoringId: string): Promise<ActualEffortRecord[]> {
+  return getJson<ActualEffortRecord[]>(`/api/requirement/${encodeURIComponent(scoringId)}/actual-effort`);
 }
 
 export function getAIUsageSummary(from: Date, to: Date): Promise<AIUsageSummary> {

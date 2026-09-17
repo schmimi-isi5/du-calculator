@@ -9,9 +9,11 @@ import type {
   RepositoryContext,
   RepositorySnapshot,
   RepositorySnapshotSummary,
+  RepositoryStats,
   RequirementContext,
   ScoringHistoryEntry,
   ScoringResult,
+  ScoringStats,
 } from "../domain/types.js";
 import { pool } from "../db/pool.js";
 import type { ScoringStore } from "./ScoringStore.js";
@@ -244,6 +246,21 @@ export class PostgresScoringStore implements ScoringStore {
     return result.rows.map(toSnapshotSummary);
   }
 
+  async getRepositoryStats(): Promise<RepositoryStats> {
+    const [statusResult, modeResult, totalResult] = await Promise.all([
+      pool.query<{ status: string; count: string }>(
+        "SELECT status, count(*) FROM repository_snapshots GROUP BY status",
+      ),
+      pool.query<{ mode: string; count: string }>("SELECT mode, count(*) FROM repository_snapshots GROUP BY mode"),
+      pool.query<{ count: string }>("SELECT count(*) FROM repository_snapshots"),
+    ]);
+    return {
+      total: Number(totalResult.rows[0]?.count ?? 0),
+      byStatus: Object.fromEntries(statusResult.rows.map((r) => [r.status, Number(r.count)])) as RepositoryStats["byStatus"],
+      byMode: Object.fromEntries(modeResult.rows.map((r) => [r.mode, Number(r.count)])) as RepositoryStats["byMode"],
+    };
+  }
+
   async saveRepositoryContext(snapshotId: string, context: RepositoryContext): Promise<void> {
     await pool.query(
       `UPDATE repository_snapshots
@@ -391,6 +408,17 @@ export class PostgresScoringStore implements ScoringStore {
       [limit],
     );
     return result.rows.map(toHistoryEntry);
+  }
+
+  async getScoringStats(): Promise<ScoringStats> {
+    const [statusResult, totalResult] = await Promise.all([
+      pool.query<{ status: string; count: string }>("SELECT status, count(*) FROM scoring_results GROUP BY status"),
+      pool.query<{ count: string }>("SELECT count(*) FROM scoring_results"),
+    ]);
+    return {
+      total: Number(totalResult.rows[0]?.count ?? 0),
+      byStatus: Object.fromEntries(statusResult.rows.map((r) => [r.status, Number(r.count)])) as ScoringStats["byStatus"],
+    };
   }
 }
 

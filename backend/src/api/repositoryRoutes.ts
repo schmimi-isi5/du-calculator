@@ -145,6 +145,13 @@ repositoryRouter.get("/", asyncHandler(async (req, res) => {
   res.status(200).json(snapshots);
 }));
 
+// Global counts for the overview Dashboard - registered before "/:id" for
+// the same reason as "/" above.
+repositoryRouter.get("/stats", asyncHandler(async (req, res) => {
+  const stats = await store.getRepositoryStats();
+  res.status(200).json(stats);
+}));
+
 repositoryRouter.get("/:id", asyncHandler(async (req, res) => {
   const id = req.params.id;
   if (!id) {

@@ -107,13 +107,19 @@ export function RequirementPanel({
       <h2>Anforderung erfassen</h2>
 
       <label htmlFor="reqTitle">Titel</label>
-      <input id="reqTitle" value={title} onChange={(e) => onChangeTitle(e.target.value)} />
+      <input
+        id="reqTitle"
+        value={title}
+        onChange={(e) => onChangeTitle(e.target.value)}
+        placeholder="Kurzer, eindeutiger Name für diese Anforderung"
+      />
 
       <label htmlFor="reqDescription">Beschreibung</label>
       <textarea
         id="reqDescription"
         value={description}
         onChange={(e) => onChangeDescription(e.target.value)}
+        placeholder="Was soll umgesetzt werden, und warum? Je konkreter, desto weniger Rückfragen."
       />
 
       <div className="row">
@@ -215,7 +221,7 @@ export function RequirementPanel({
         </button>
         {!canSubmit && !loading && (
           <span style={{ fontSize: 12, color: "var(--muted)" }}>
-            Zuerst ein Repository erfolgreich analysieren.
+            Zuerst ein Repository analysieren oder Greenfield wählen, dann Titel und Beschreibung ausfüllen.
           </span>
         )}
       </div>
