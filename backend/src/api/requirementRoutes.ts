@@ -11,6 +11,7 @@ import { computeDuResult, determineScoringStatus } from "../scoring/duEngine.js"
 import { listActualEffortForScoring, recordActualEffort } from "../store/ActualEffortStore.js";
 import { store } from "../store/PostgresScoringStore.js";
 import { asyncHandler } from "./asyncHandler.js";
+import { buildCustomerReport } from "./customerReport.js";
 import { errorCause } from "./errorCause.js";
 
 export const requirementRouter = Router();
@@ -164,6 +165,13 @@ requirementRouter.get("/history", asyncHandler(async (req, res) => {
   res.status(200).json(entries);
 }));
 
+// Global counts for the overview Dashboard - registered before "/:id" for
+// the same reason as "/history" above.
+requirementRouter.get("/stats", asyncHandler(async (req, res) => {
+  const stats = await store.getScoringStats();
+  res.status(200).json(stats);
+}));
+
 requirementRouter.get("/:id", asyncHandler(async (req, res) => {
   const id = req.params.id;
   if (!id) {
@@ -176,6 +184,29 @@ requirementRouter.get("/:id", asyncHandler(async (req, res) => {
     return;
   }
   res.status(200).json(result);
+}));
+
+// Public, unauthenticated share link (spec: customer opens this themselves).
+// Security is by unguessable id only (scoring_results.id is a random UUID) -
+// see api/customerReport.ts for the strict allowlist of fields this may
+// ever return. Never the full ScoringResult.
+requirementRouter.get("/:id/customer-report", asyncHandler(async (req, res) => {
+  const id = req.params.id;
+  if (!id) {
+    res.status(400).json({ error: "id is required." });
+    return;
+  }
+  const result = await store.getScoringResult(id);
+  if (!result) {
+    res.status(404).json({ error: "Requirement not found." });
+    return;
+  }
+  const report = buildCustomerReport(result);
+  if (!report) {
+    res.status(409).json({ error: "This requirement does not have a shareable result yet." });
+    return;
+  }
+  res.status(200).json(report);
 }));
 
 // Calibration data collection (commercial-du-v1 spec sections 19, 28-29) -

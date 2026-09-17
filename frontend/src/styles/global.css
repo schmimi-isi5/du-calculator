@@ -638,6 +638,48 @@ textarea {
   color: var(--teal);
 }
 
+/* Light-background counterpart to .view-toggle (that one assumes a dark
+   header behind it) - used for the Repository/Greenfield choice and any
+   future either/or wizard decision on a plain card. */
+.mode-toggle {
+  display: flex;
+  gap: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  width: fit-content;
+}
+
+.mode-toggle button {
+  border: 0;
+  padding: 8px 14px;
+  background: #fff;
+  color: var(--ink);
+  font-weight: 700;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.mode-toggle button:not(:last-child) {
+  border-right: 1px solid var(--line);
+}
+
+.mode-toggle button.active {
+  background: var(--teal);
+  color: #fff;
+}
+
+.mode-toggle button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.panel-intro {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0 0 10px;
+}
+
 .open-questions li,
 .impact-list li {
   font-size: 12px;
@@ -871,6 +913,58 @@ code.file-path {
   font-size: 10px;
   color: var(--muted);
   margin-top: 4px;
+}
+
+.usage-kpi-clickable {
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.usage-kpi-clickable:hover {
+  background: var(--teal-tint);
+}
+
+.dashboard-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.dashboard-status-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dashboard-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.dashboard-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  background: #f7f9f8;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  transition: background 0.15s ease;
+}
+
+.dashboard-list-item:hover {
+  background: var(--teal-tint);
 }
 
 .repo-picker {
@@ -1437,4 +1531,54 @@ code.file-path {
   font-size: 12px;
   padding: 2px 8px;
   border-radius: 999px;
+}
+
+/* Standalone public share page (/report/:id, no app chrome) - see
+   CustomerReportPage.tsx. Deliberately its own top-level container instead
+   of reusing .wrap/.app-header, since this page has no tabs/navigation. */
+.public-report-page {
+  min-height: 100vh;
+  background: var(--bg);
+}
+
+.public-report-header {
+  background: var(--teal);
+  color: #fff;
+  padding: 16px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.public-report-brand {
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: 0.02em;
+}
+
+.public-report-body {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+
+@media print {
+  .public-report-header button,
+  .public-report-header .btn {
+    display: none;
+  }
+
+  .public-report-page {
+    background: #fff;
+  }
+
+  .card.report {
+    border: none;
+    box-shadow: none;
+  }
+
+  .view-toggle,
+  .report-cta {
+    display: none;
+  }
 }

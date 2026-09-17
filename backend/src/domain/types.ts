@@ -621,6 +621,66 @@ export interface ScoringResult {
   scoredAt: string | null;
 }
 
+// ---------------------------------------------------------------------------
+// Customer Report - a deliberately narrow, hand-picked projection of
+// ScoringResult for the public, unauthenticated share link (GET
+// /api/requirement/:id/customer-report, see api/customerReport.ts
+// buildCustomerReport). NEVER derived by stripping fields from the full
+// ScoringResult on the client - internal figures (Commercial DU
+// adjustments, direct cost breakdowns, confidence internals, dimension
+// scores/evidence, assumptions) must never leave the server for this route,
+// since the link requires no login (security by an unguessable id is the
+// only protection - see api/requirementRoutes.ts).
+// ---------------------------------------------------------------------------
+
+export interface CustomerReportTechnology {
+  technology: TechnologyKey;
+  label: string;
+  relativeEffortFactor: number;
+  advantages: string[];
+  disadvantages: string[];
+}
+
+export interface CustomerReportRuntimeCost {
+  label: string;
+  /** EUR, or null when status is not ESTIMATED. */
+  amountEur: number | null;
+  status: DirectCostStatus;
+}
+
+export interface CustomerReport {
+  scoringId: string;
+  requirement: { title: string; description: string };
+  price: number | null;
+  pricingStrategy: PricingStrategy;
+  isRoughEstimate: boolean;
+  duClass: DuClass;
+  /** The commercially offered unit count - null only for XXL (decomposition recommended). */
+  developmentUnits: number | null;
+  overallConfidence: number;
+  confidenceLevel: "HIGH" | "MEDIUM" | "LOW";
+  created: string[];
+  modified: string[];
+  reused: string[];
+  technologyComparison: CustomerReportTechnology[];
+  runtimeCosts: CustomerReportRuntimeCost[];
+  suggestedDecomposition: SuggestedSubRequirement[];
+  overallAssessment: LocalizedText | null;
+}
+
+/** Aggregate counts for the overview Dashboard - see api/repositoryRoutes.ts GET /stats. Global counts (not limited to a page size), unlike listSnapshots. */
+export interface RepositoryStats {
+  total: number;
+  byStatus: Record<RepositoryStatus, number>;
+  byMode: Record<RepositorySnapshotMode, number>;
+}
+
+/** Aggregate counts for the overview Dashboard - see api/requirementRoutes.ts GET /stats. Global counts (not limited to a page size), unlike listScoringResults. */
+export interface ScoringStats {
+  total: number;
+  byStatus: Record<ScoringStatus, number>;
+}
+
 /** One row of the requirement -> DU decision history list (spec: traceable history). */
 export interface ScoringHistoryEntry {
   id: string;

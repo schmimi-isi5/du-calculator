@@ -1,33 +1,12 @@
-import { useState } from "react";
-import type { DuClass, ScoringResult } from "../types";
+import { useEffect, useState } from "react";
+import { ApiError, getActualEffortRecords, recordActualEffort } from "../api/client";
+import { CUSTOM_DEVELOPMENT_BENEFITS, DU_CLASS_CUSTOMER_LABELS } from "../customerReportContent";
+import { TECHNOLOGY_IDS } from "../types";
+import type { ActualEffortRecord, ScoringResult, TechnologyKey } from "../types";
 
 interface Props {
   result: ScoringResult;
 }
-
-// A friendlier read of the DU class for someone who has never heard of
-// "Development Units" - the internal view still shows the raw class/DU
-// count for whoever is preparing the quote.
-const DU_CLASS_CUSTOMER_LABELS: Record<DuClass, string> = {
-  XS: "Sehr kleiner Umfang",
-  S: "Kleiner Umfang",
-  M: "Mittlerer Umfang",
-  L: "Größerer Umfang",
-  XL: "Umfangreiches Vorhaben",
-  XXL: "Großprojekt",
-};
-
-// Fixed, always-true value proposition for choosing custom development over
-// a low-code platform - not derived from the requirement's own scores
-// (unlike the comparison table below), since these hold regardless of this
-// specific requirement's complexity profile.
-const CUSTOM_DEVELOPMENT_BENEFITS = [
-  "Nahtlose Integration in Ihr bestehendes System",
-  "Volle Eigentumsrechte & Kontrolle über den Code",
-  "Keine wiederkehrenden Plattform- oder Lizenzkosten",
-  "Erweiterbar für zukünftige Anforderungen, ohne Plattformgrenzen",
-  "Direkter Support durch das Team, das Ihr System bereits kennt",
-];
 
 // Price/DU are the actual quote - a report meant to drive a purchase
 // decision needs to show them to the customer, not hide them. What stays
@@ -38,7 +17,52 @@ const CUSTOM_DEVELOPMENT_BENEFITS = [
 // for X€ less" instead of "here is what n8n would roughly take, relatively").
 export function ManagementReport({ result }: Props) {
   const [view, setView] = useState<"customer" | "internal">("customer");
+  const [linkCopied, setLinkCopied] = useState(false);
+  const [actualRecords, setActualRecords] = useState<ActualEffortRecord[]>([]);
+  const [actualHumanHours, setActualHumanHours] = useState("");
+  const [actualImplementationMethod, setActualImplementationMethod] = useState<TechnologyKey>("AI_NATIVE");
+  const [actualNotes, setActualNotes] = useState("");
+  const [submittingActual, setSubmittingActual] = useState(false);
+  const [actualError, setActualError] = useState<string | null>(null);
   const du = result.duResult;
+
+  useEffect(() => {
+    let cancelled = false;
+    getActualEffortRecords(result.id)
+      .then((records) => {
+        if (!cancelled) setActualRecords(records);
+      })
+      .catch(() => {
+        // Non-critical - the report still works without prior actuals.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [result.id]);
+
+  async function handleRecordActual() {
+    const hours = Number(actualHumanHours);
+    if (!Number.isFinite(hours) || hours <= 0) {
+      setActualError("Bitte eine gültige Stundenzahl größer 0 angeben.");
+      return;
+    }
+    setSubmittingActual(true);
+    setActualError(null);
+    try {
+      const record = await recordActualEffort(result.id, {
+        actualHumanHours: hours,
+        actualImplementationMethod,
+        notes: actualNotes.trim() || undefined,
+      });
+      setActualRecords((prev) => [record, ...prev]);
+      setActualHumanHours("");
+      setActualNotes("");
+    } catch (err) {
+      setActualError(err instanceof ApiError ? err.message : "Ist-Aufwand konnte nicht gespeichert werden.");
+    } finally {
+      setSubmittingActual(false);
+    }
+  }
 
   if (!du) {
     return (
@@ -149,6 +173,36 @@ export function ManagementReport({ result }: Props) {
           Diese Anforderung wurde als Großprojekt (Klasse XXL) eingestuft - der Preis oben ist eine grobe
           Hochrechnung, keine belastbare Schätzung. Eine Zerlegung in kleinere, einzeln beauftragbare Pakete wird
           empfohlen{suggestions.length > 0 ? " - siehe Vorschläge unten." : "."}
+        </div>
+      )}
+
+      {view === "internal" && (
+        <div className="report-section">
+          <h4>Kundenlink teilen</h4>
+          <p className="report-note" style={{ marginBottom: 10 }}>
+            Dieser Link zeigt ausschließlich die Kundenansicht oben - interne Kalkulationsdetails (Commercial-DU-
+            Herleitung, Kostenaufschlüsselung, Confidence-Werte) werden serverseitig herausgefiltert und sind darüber
+            nie erreichbar.
+          </p>
+          <div className="actions" style={{ marginTop: 0 }}>
+            <input
+              readOnly
+              style={{ flex: "1 1 260px", minWidth: 0 }}
+              value={`${window.location.origin}/report/${result.id}`}
+              onFocus={(e) => e.target.select()}
+            />
+            <button
+              className="btn"
+              onClick={() => {
+                void navigator.clipboard.writeText(`${window.location.origin}/report/${result.id}`).then(() => {
+                  setLinkCopied(true);
+                  setTimeout(() => setLinkCopied(false), 2000);
+                });
+              }}
+            >
+              {linkCopied ? "Kopiert!" : "Link kopieren"}
+            </button>
+          </div>
         </div>
       )}
 
@@ -344,6 +398,146 @@ export function ManagementReport({ result }: Props) {
               {du.commercialCalculation.commercialDUBeforeGuardrail}, danach:{" "}
               {du.commercialCalculation.commercialDUAfterGuardrail})
             </p>
+          )}
+        </div>
+      )}
+
+      {view === "internal" && (() => {
+        const latestActual =
+          actualRecords.length > 0
+            ? [...actualRecords].sort(
+                (a, b) => new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime(),
+              )[0]
+            : null;
+        const predictedHours = du.effortEstimate?.likelyHours ?? null;
+        const actualHours = latestActual?.actualHumanHours ?? null;
+        const maxHours = Math.max(predictedHours ?? 0, actualHours ?? 0, 1);
+        return (
+          <div className="report-section">
+            <h4>Kernzahlen-Vergleich: Stunden vs. Development Units</h4>
+            <p className="report-note" style={{ marginBottom: 10 }}>
+              Base DU und Commercial DU sind kaufmännische Einheiten (Scope/Risiko bzw. angebotene Leistung) - die
+              Stundenschätzung ist eine davon bewusst unabhängige Aufwandseinschätzung der KI (siehe oben, "KI-native
+              Aufwandsschätzung"). Diese Übersicht stellt beide Sichten nebeneinander und - sobald ein Ist-Aufwand
+              erfasst wurde - der Prognose gegenüber.
+            </p>
+            <table className="approach-table" style={{ marginBottom: 14 }}>
+              <thead>
+                <tr>
+                  <th>Kennzahl</th>
+                  <th>Prognose</th>
+                  <th>Ist (zuletzt erfasst)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Base DU</td>
+                  <td>{du.developmentUnits ?? "–"}</td>
+                  <td style={{ color: "var(--muted)" }}>kaufmännische Einheit, kein Ist-Wert</td>
+                </tr>
+                <tr>
+                  <td>Commercial DU</td>
+                  <td>{du.commercialDevelopmentUnits ?? "–"}</td>
+                  <td style={{ color: "var(--muted)" }}>kaufmännische Einheit, kein Ist-Wert</td>
+                </tr>
+                <tr>
+                  <td>Aufwand (Personalstunden)</td>
+                  <td>{predictedHours !== null ? `${predictedHours.toFixed(0)} Std.` : "–"}</td>
+                  <td>{actualHours !== null ? `${actualHours.toFixed(1)} Std.` : "noch nicht erfasst"}</td>
+                </tr>
+                <tr>
+                  <td>Umsetzungsmethode</td>
+                  <td>KI-native Individualentwicklung (Referenz)</td>
+                  <td>{latestActual ? latestActual.actualImplementationMethod : "noch nicht erfasst"}</td>
+                </tr>
+              </tbody>
+            </table>
+            {predictedHours !== null && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <div className="effort-bar-cell">
+                  <span style={{ width: 66, fontSize: 11, color: "var(--muted)" }}>Prognose</span>
+                  <div className="effort-bar-track">
+                    <div
+                      className="effort-bar-fill baseline"
+                      style={{ width: `${Math.round((predictedHours / maxHours) * 100)}%` }}
+                    />
+                  </div>
+                  <span className="effort-bar-label">{predictedHours.toFixed(0)} Std.</span>
+                </div>
+                <div className="effort-bar-cell">
+                  <span style={{ width: 66, fontSize: 11, color: "var(--muted)" }}>Ist</span>
+                  <div className="effort-bar-track">
+                    {actualHours !== null && (
+                      <div
+                        className={`effort-bar-fill ${actualHours > predictedHours ? "over-baseline" : ""}`}
+                        style={{ width: `${Math.round((actualHours / maxHours) * 100)}%` }}
+                      />
+                    )}
+                  </div>
+                  <span className="effort-bar-label">{actualHours !== null ? `${actualHours.toFixed(1)} Std.` : "–"}</span>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {view === "internal" && (
+        <div className="report-section">
+          <h4>Ist-Aufwand erfassen</h4>
+          <p className="report-note" style={{ marginBottom: 10 }}>
+            Erfasst den tatsächlichen Aufwand nach Abschluss - Grundlage für die künftige Kalibrierung der
+            Aufwandsschätzung (siehe CLAUDE.md: Effort- und Commercial-DU-Kalibrierung sind bewusst getrennte
+            Fragen - nur der Stundenvergleich hat eine objektive Ist-Größe).
+          </p>
+          <div className="row">
+            <div>
+              <label>Tatsächlicher Aufwand (Std.)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.5"
+                value={actualHumanHours}
+                onChange={(e) => setActualHumanHours(e.target.value)}
+                placeholder="z. B. 18"
+              />
+            </div>
+            <div>
+              <label>Umsetzungsmethode</label>
+              <select
+                value={actualImplementationMethod}
+                onChange={(e) => setActualImplementationMethod(e.target.value as TechnologyKey)}
+              >
+                {TECHNOLOGY_IDS.map((id) => (
+                  <option key={id} value={id}>
+                    {id}
+                  </option>
+                ))}
+                <option value="N8N_INTREXX">N8N_INTREXX</option>
+              </select>
+            </div>
+          </div>
+          <label>Notizen (optional)</label>
+          <textarea
+            value={actualNotes}
+            onChange={(e) => setActualNotes(e.target.value)}
+            placeholder="Besonderheiten, Abweichungsgründe, Nacharbeit …"
+          />
+          {actualError && <div className="notice error" style={{ marginTop: 8 }}>{actualError}</div>}
+          <div className="actions">
+            <button className="btn primary" onClick={() => void handleRecordActual()} disabled={submittingActual}>
+              {submittingActual ? "Speichert …" : "Ist-Aufwand speichern"}
+            </button>
+          </div>
+          {actualRecords.length > 0 && (
+            <ul className="context-list" style={{ marginTop: 10 }}>
+              {actualRecords.map((rec) => (
+                <li key={rec.id}>
+                  {new Date(rec.recordedAt).toLocaleDateString("de-DE")}: {rec.actualHumanHours.toFixed(1)} Std. (
+                  {rec.actualImplementationMethod}){rec.notes ? ` - ${rec.notes}` : ""}
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       )}

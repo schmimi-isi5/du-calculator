@@ -11,6 +11,7 @@ import {
   scoreRequirement,
 } from "./api/client";
 import { AIUsageDashboard } from "./components/AIUsageDashboard";
+import { Dashboard } from "./components/Dashboard";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { ManagementReport } from "./components/ManagementReport";
 import { SettingsPanel } from "./components/SettingsPanel";
@@ -39,10 +40,10 @@ function linesToList(value: string): string[] {
     .filter((line) => line.length > 0);
 }
 
-type Tab = "new" | "history" | "usage" | "settings";
+type Tab = "dashboard" | "new" | "history" | "usage" | "settings";
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<Tab>("new");
+  const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const [language, setLanguage] = useState<UiLanguage>("de");
   const [wizardStep, setWizardStep] = useState<WizardStep>(1);
 
@@ -136,6 +137,20 @@ export default function App() {
     } finally {
       setRepoLoading(false);
     }
+  }
+
+  // From the Dashboard's "Zuletzt analysierte Repositories" list - jumps
+  // straight into step 2 (requirement entry), since the repository is
+  // already chosen.
+  async function handleUseRepositoryFromDashboard(id: string) {
+    setActiveTab("new");
+    await handleUseExistingRepository(id);
+    setWizardStep(2);
+  }
+
+  function handleSelectHistoryEntryFromDashboard(id: string) {
+    setActiveTab("history");
+    void handleSelectHistoryEntry(id);
   }
 
   function handleChangeRepository() {
@@ -270,6 +285,9 @@ export default function App() {
 
       <main>
         <div className="tabs">
+          <button className={activeTab === "dashboard" ? "active" : ""} onClick={() => setActiveTab("dashboard")}>
+            Dashboard
+          </button>
           <button className={activeTab === "new" ? "active" : ""} onClick={() => setActiveTab("new")}>
             Neue Bewertung
           </button>
@@ -283,6 +301,15 @@ export default function App() {
             Einstellungen
           </button>
         </div>
+
+        {activeTab === "dashboard" && (
+          <Dashboard
+            onStartNewAssessment={() => setActiveTab("new")}
+            onUseRepository={handleUseRepositoryFromDashboard}
+            onSelectHistoryEntry={handleSelectHistoryEntryFromDashboard}
+            onOpenUsageTab={() => setActiveTab("usage")}
+          />
+        )}
 
         {activeTab === "new" && (
           <>

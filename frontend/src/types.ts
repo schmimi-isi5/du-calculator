@@ -452,6 +452,84 @@ export interface ScoringResult {
   scoredAt: string | null;
 }
 
+/** The narrow, customer-safe payload served by the public share link (GET /api/requirement/:id/customer-report) - see backend/src/api/customerReport.ts. */
+export interface CustomerReportTechnology {
+  technology: TechnologyKey;
+  label: string;
+  relativeEffortFactor: number;
+  advantages: string[];
+  disadvantages: string[];
+}
+
+export interface CustomerReportRuntimeCost {
+  label: string;
+  amountEur: number | null;
+  status: DirectCostStatus;
+}
+
+export interface CustomerReport {
+  scoringId: string;
+  requirement: { title: string; description: string };
+  price: number | null;
+  pricingStrategy: PricingStrategy;
+  isRoughEstimate: boolean;
+  duClass: DuClass;
+  developmentUnits: number | null;
+  overallConfidence: number;
+  confidenceLevel: "HIGH" | "MEDIUM" | "LOW";
+  created: string[];
+  modified: string[];
+  reused: string[];
+  technologyComparison: CustomerReportTechnology[];
+  runtimeCosts: CustomerReportRuntimeCost[];
+  suggestedDecomposition: SuggestedSubRequirement[];
+  overallAssessment: LocalizedText | null;
+}
+
+// ---------------------------------------------------------------------------
+// Calibration data (Prognose vs. Ist) - see backend/src/domain/types.ts
+// EffortPredictionSnapshot/ActualEffortRecord.
+// ---------------------------------------------------------------------------
+
+export interface EffortPredictionSnapshot {
+  calculationModelVersion: string | null;
+  predictedBaseDU: number | null;
+  predictedCommercialDU: number | null;
+  predictedEffortMinHours: number;
+  predictedEffortLikelyHours: number;
+  predictedEffortMaxHours: number;
+  predictedEffortConfidence: number | null;
+  effortBenchmark: EffortBenchmarkInfo | null;
+  effortAdjustment: CommercialAdjustment | null;
+  predictedTechnologyComparison: TechnologyAssessment[];
+  directCostsPredicted: DirectCostEstimate | null;
+  innovationLevel: InnovationLevel | null;
+  implementationNovelty: ImplementationNoveltyAssessment | null;
+  reusableInnovationIp: ReusableInnovationAssessment | null;
+  commercialRiskReserve: CommercialAdjustment | null;
+  commercialDUBeforeGuardrail: number | null;
+  commercialDUAfterGuardrail: number | null;
+  guardrailApplied: boolean | null;
+  pricingStrategy: PricingStrategy;
+  offeredPrice: number | null;
+}
+
+/** A recorded real-world outcome for a scored requirement - see backend/src/store/ActualEffortStore.ts. Never overwrites the original prediction; predictionSnapshot is frozen at the moment this was recorded. */
+export interface ActualEffortRecord {
+  id: string;
+  scoringId: string;
+  actualHumanHours: number;
+  actualImplementationMethod: TechnologyKey;
+  predictionSnapshot: EffortPredictionSnapshot | null;
+  directCostsActual: DirectCostEstimate | null;
+  reworkHours: number | null;
+  bugfixHours: number | null;
+  acceptanceIterations: number | null;
+  scopeChanged: boolean | null;
+  notes: string | null;
+  recordedAt: string;
+}
+
 // ---------------------------------------------------------------------------
 // Assumption & Clarification Engine
 // ---------------------------------------------------------------------------
@@ -542,6 +620,19 @@ export interface RequirementContext {
 }
 
 export type AssumptionAction = "CONFIRM" | "REJECT" | "EDIT";
+
+/** Global counts for the overview Dashboard - see backend/src/domain/types.ts RepositoryStats. */
+export interface RepositoryStats {
+  total: number;
+  byStatus: Partial<Record<RepositoryStatus, number>>;
+  byMode: Partial<Record<RepositorySnapshotMode, number>>;
+}
+
+/** Global counts for the overview Dashboard - see backend/src/domain/types.ts ScoringStats. */
+export interface ScoringStats {
+  total: number;
+  byStatus: Partial<Record<ScoringStatus, number>>;
+}
 
 /** One row of the requirement -> DU decision history list. */
 export interface ScoringHistoryEntry {

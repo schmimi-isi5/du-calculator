@@ -2,9 +2,11 @@ import type {
   RepositoryContext,
   RepositorySnapshot,
   RepositorySnapshotSummary,
+  RepositoryStats,
   RequirementContext,
   ScoringHistoryEntry,
   ScoringResult,
+  ScoringStats,
 } from "../domain/types.js";
 
 /**
@@ -25,6 +27,9 @@ export interface ScoringStore {
   /** Successfully analyzed repositories, newest first - candidates for reuse. */
   listSnapshots(limit: number): Promise<RepositorySnapshotSummary[]>;
 
+  /** Global counts across every repository snapshot ever created, for the overview Dashboard - see domain/types.ts RepositoryStats. */
+  getRepositoryStats(): Promise<RepositoryStats>;
+
   /** The file excerpts a snapshot was analyzed with - needed to score further requirements against it. */
   saveRepositoryContext(snapshotId: string, context: RepositoryContext): Promise<void>;
   getRepositoryContext(snapshotId: string): Promise<RepositoryContext | undefined>;
@@ -39,4 +44,7 @@ export interface ScoringStore {
 
   /** Most recent requirement -> DU decisions, newest first. */
   listScoringResults(limit: number): Promise<ScoringHistoryEntry[]>;
+
+  /** Global counts across every scoring result ever created, for the overview Dashboard - see domain/types.ts ScoringStats. */
+  getScoringStats(): Promise<ScoringStats>;
 }
