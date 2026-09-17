@@ -13,13 +13,15 @@ import {
 import {
   buildDimensionScores,
   buildDirectCostEstimate,
-  buildEffortEstimate,
+  buildEffortWorkBreakdownFromPackages,
+  buildEffortWorkBreakdownOutput,
   buildEstimatedCostItem,
   buildExistingAssetLeverage,
   buildImplementationNoveltyAssessment,
   buildReusableInnovationAssessment,
   buildTechnologyNarratives,
   buildTechnologyProfile,
+  buildWorkPackage,
 } from "./testFixtures.js";
 
 const BILLING_RATE_PER_HOUR = 160;
@@ -31,7 +33,7 @@ function buildInput(overrides: Partial<ComputeDuResultInput> = {}): ComputeDuRes
     // Matches the L-class effort benchmark (36h) by default, so most tests
     // below get commercialDU == baseDU unless they deliberately vary
     // effort/cost/novelty.
-    effortEstimate: buildEffortEstimate(30, 36, 42),
+    effortWorkBreakdown: buildEffortWorkBreakdownOutput(30, 36, 42),
     technologyProfile: buildTechnologyProfile(),
     existingAssetLeverage: buildExistingAssetLeverage(),
     technologyNarratives: buildTechnologyNarratives(),
@@ -157,7 +159,7 @@ describe("calculateOverallConfidence", () => {
 
 describe("computeDuResult", () => {
   it("computes a full result end to end for a well-understood, medium-complexity requirement", () => {
-    const result = computeDuResult(buildInput({ effortEstimate: buildEffortEstimate(30, 36, 45) }));
+    const result = computeDuResult(buildInput({ effortWorkBreakdown: buildEffortWorkBreakdownOutput(30, 36, 45) }));
 
     expect(result.weightedScore).toBe(3.0);
     expect(result.duClass).toBe("L");
@@ -174,7 +176,7 @@ describe("computeDuResult", () => {
   it("gives XXL results a null development unit count and price under DU_FIXED_PRICE, but still a usable effort/price under HOURLY", () => {
     const xxlInput = buildInput({
       scores: buildDimensionScores(Object.fromEntries(DIMENSION_KEYS.map((k) => [k, { score: 5, confidence: 0.9 }])) as never),
-      effortEstimate: buildEffortEstimate(80, 100, 140),
+      effortWorkBreakdown: buildEffortWorkBreakdownOutput(80, 100, 140),
     });
 
     const hourly = computeDuResult(xxlInput);
@@ -202,16 +204,16 @@ describe("computeDuResult", () => {
     expect(result.confidenceLevel).toBe("LOW");
   });
 
-  it("attaches an effortEstimate corridor taken from the AI's own estimate, not derived from DU", () => {
-    const result = computeDuResult(buildInput({ effortEstimate: buildEffortEstimate(20, 25, 35) }));
+  it("attaches an effortEstimate corridor aggregated bottom-up from Work Packages, not derived from DU", () => {
+    const result = computeDuResult(buildInput({ effortWorkBreakdown: buildEffortWorkBreakdownOutput(20, 25, 35) }));
 
-    expect(result.effortEstimate).toEqual({
-      minHours: 20,
-      likelyHours: 25,
-      maxHours: 35,
-      confidence: 0.8,
-      rationale: { en: "test rationale", de: "Test-Begründung" },
-    });
+    expect(result.effortEstimate?.minHours).toBe(20);
+    expect(result.effortEstimate?.likelyHours).toBe(25);
+    expect(result.effortEstimate?.maxHours).toBe(35);
+    expect(result.effortEstimate?.confidence).toBe(0.8);
+    expect(result.effortEstimate?.workBreakdown?.calculationMethod).toBe("BOTTOM_UP_WORK_PACKAGE_AGGREGATION");
+    expect(result.effortEstimate?.workBreakdown?.calculationModelVersion).toBe("effort-bottom-up-v1");
+    expect(result.effortEstimate?.workBreakdown?.workPackages).toHaveLength(1);
   });
 
   it("attaches a technology comparison with AI_NATIVE pinned at relativeEffortFactor 1.0 and every technology/combination present", () => {
@@ -268,7 +270,7 @@ describe("computeDuResult", () => {
           scores: buildDimensionScores(
             Object.fromEntries(DIMENSION_KEYS.map((k) => [k, { score: Math.round(score) as 1 | 2 | 3 | 4 | 5, confidence: 0.9 }])) as never,
           ),
-          effortEstimate: buildEffortEstimate(20, 50, 80),
+          effortWorkBreakdown: buildEffortWorkBreakdownOutput(20, 50, 80),
         }),
       );
       const impliedRate = result.price! / result.effortEstimate!.likelyHours;
@@ -284,8 +286,8 @@ describe("computeDuResult - DU/effort independence", () => {
   // allowed to diverge sharply from - the DU class/count, which stays a
   // pure function of the eight dimension scores.
   it("never changes the DU class or development unit count based on the AI's effort estimate", () => {
-    const lowEstimate = computeDuResult(buildInput({ effortEstimate: buildEffortEstimate(2, 4, 6) }));
-    const highEstimate = computeDuResult(buildInput({ effortEstimate: buildEffortEstimate(300, 400, 500) }));
+    const lowEstimate = computeDuResult(buildInput({ effortWorkBreakdown: buildEffortWorkBreakdownOutput(2, 4, 6) }));
+    const highEstimate = computeDuResult(buildInput({ effortWorkBreakdown: buildEffortWorkBreakdownOutput(300, 400, 500) }));
 
     expect(lowEstimate.duClass).toBe("L");
     expect(lowEstimate.developmentUnits).toBe(6);
@@ -335,5 +337,30 @@ describe("determineScoringStatus", () => {
     const result = computeDuResult(lowConfidenceInput);
     expect(determineScoringStatus(result, 0)).toBe("NEEDS_CLARIFICATION");
     expect(determineScoringStatus(result, 5)).toBe("NEEDS_CLARIFICATION");
+  });
+});
+
+describe("computeDuResult - bottom-up effort integration (Test I/J)", () => {
+  // Multiple Work Packages summing to a likely total of 32h - deliberately
+  // NOT equal to the L-class benchmark (36h) used elsewhere in this file, so
+  // this exercises real multi-package aggregation rather than the
+  // single-package convenience fixture.
+  const multiPackageBreakdown = buildEffortWorkBreakdownFromPackages([
+    buildWorkPackage({ id: "wp-1", humanEffort: { minHours: 4, likelyHours: 8, maxHours: 12 } }),
+    buildWorkPackage({ id: "wp-2", humanEffort: { minHours: 6, likelyHours: 10, maxHours: 15 } }),
+    buildWorkPackage({ id: "wp-3", humanEffort: { minHours: 5, likelyHours: 14, maxHours: 20 } }),
+  ]);
+
+  it("passes exactly the bottom-up aggregated likely hours into the Commercial Model (Test I)", () => {
+    const result = computeDuResult(buildInput({ effortWorkBreakdown: multiPackageBreakdown }));
+
+    expect(result.effortEstimate?.likelyHours).toBe(32);
+    expect(result.commercialCalculation?.effortAnalysis?.predictedLikelyHours).toBe(32);
+  });
+
+  it("prices HOURLY as exactly the aggregated likely hours times the configured rate (Test J)", () => {
+    const result = computeDuResult(buildInput({ effortWorkBreakdown: multiPackageBreakdown, pricingStrategy: "HOURLY" }));
+
+    expect(result.price).toBe(32 * BILLING_RATE_PER_HOUR);
   });
 });

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ApiError, getActualEffortRecords, recordActualEffort } from "../api/client";
 import { CUSTOM_DEVELOPMENT_BENEFITS, DU_CLASS_CUSTOMER_LABELS } from "../customerReportContent";
 import { TECHNOLOGY_IDS } from "../types";
-import type { ActualEffortRecord, ScoringResult, TechnologyKey } from "../types";
+import type { ActualEffortRecord, EffortSanityFlag, EffortWorkBreakdown, EffortWorkPackage, ScoringResult, TechnologyKey } from "../types";
 
 interface Props {
   result: ScoringResult;
@@ -259,8 +259,10 @@ export function ManagementReport({ result }: Props) {
           <p className="report-note" style={{ marginBottom: 10 }}>
             Diese Spanne ist Personalzeit (Analyse, Briefing/Steuerung der Coding Agents, Review, Korrekturen,
             individuelle Entwicklungsanteile, Tests, Deployment) - nicht KI-Rechenzeit. Reine KI-API-Kosten werden
-            separat unter "KI-Kosten" erfasst. Diese Schätzung ist eine eigenständige Experten-Einschätzung für genau
-            diese Anforderung - bewusst NICHT aus der DU-Klasse abgeleitet (siehe DU-Bewertung oben).
+            separat unter "KI-Kosten" erfasst.{" "}
+            {du.effortEstimate.workBreakdown
+              ? `Bottom-up aggregiert aus ${du.effortEstimate.workBreakdown.workPackages.length} Arbeitspaketen (siehe unten) - bewusst NICHT aus der DU-Klasse abgeleitet (siehe DU-Bewertung oben) und NICHT als unabhängige KI-Gesamtschätzung.`
+              : "Diese Schätzung ist eine eigenständige Experten-Einschätzung für genau diese Anforderung - bewusst NICHT aus der DU-Klasse abgeleitet (siehe DU-Bewertung oben)."}
           </p>
           <div className="report-summary-grid">
             <div className="report-summary-item">
@@ -287,6 +289,10 @@ export function ManagementReport({ result }: Props) {
             Größen - eine sichere DU-Einstufung bedeutet nicht automatisch eine sichere Aufwandsschätzung.
           </p>
         </div>
+      )}
+
+      {view === "internal" && du.effortEstimate?.workBreakdown && (
+        <WorkBreakdownSection workBreakdown={du.effortEstimate.workBreakdown} />
       )}
 
       {view === "internal" && du.commercialCalculation?.estimateStatus === "REQUIRES_CLARIFICATION" && (
@@ -827,5 +833,172 @@ export function ManagementReport({ result }: Props) {
         <div className="report-cta">Haben Sie Fragen zu diesem Angebot? Sprechen Sie uns gerne an.</div>
       )}
     </div>
+  );
+}
+
+const SANITY_FLAG_LABELS: Record<EffortSanityFlag, string> = {
+  EFFORT_REVIEW_RECOMMENDED: "Manuelle Prüfung empfohlen",
+  LARGE_WORK_PACKAGE: "Großes Arbeitspaket enthalten",
+  LOW_EVIDENCE: "Wenig Repository-Evidenz",
+  POSSIBLE_MISSING_TESTING: "Möglicherweise fehlende Tests",
+  POSSIBLE_OVERLAP: "Mögliche Überschneidung",
+};
+
+// Internal-only drill-down into the bottom-up Work Package breakdown behind
+// the aggregated effort corridor above (spec: "Aufwandsschätzung je
+// Arbeitspaket" + Work-Package-Detailansicht). Never rendered in the
+// customer view, and never reachable via the public customer-report route
+// either - buildCustomerReport.ts doesn't even read du.effortEstimate.
+function WorkBreakdownSection({ workBreakdown }: { workBreakdown: EffortWorkBreakdown }) {
+  return (
+    <div className="report-section">
+      <h4>Aufwandsschätzung je Arbeitspaket</h4>
+      <p className="report-note" style={{ marginBottom: 10 }}>
+        Jedes Arbeitspaket wurde einzeln von der KI geschätzt (Kategorie, Aktion, Aufwand, Confidence, Reuse,
+        Evidenz) - die Gesamtsumme oben berechnet ausschließlich die Anwendung, nie eine unabhängige
+        KI-Gesamtschätzung.
+      </p>
+
+      {workBreakdown.flags.length > 0 && (
+        <div className="dashboard-status-chips" style={{ marginBottom: 10 }}>
+          {workBreakdown.flags.map((flag) => (
+            <span className="tag" key={flag}>
+              {SANITY_FLAG_LABELS[flag]}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className="work-package-list">
+        {workBreakdown.workPackages.map((wp) => (
+          <WorkPackageRow key={wp.id} wp={wp} />
+        ))}
+      </div>
+
+      {!workBreakdown.completenessAssessment.complete && workBreakdown.completenessAssessment.missingAreas.length > 0 && (
+        <p className="report-note report-note-warning" style={{ marginTop: 10 }}>
+          Von der KI als möglicherweise fehlend eingeschätzt: {workBreakdown.completenessAssessment.missingAreas.join("; ")}
+        </p>
+      )}
+
+      {workBreakdown.clarificationsRequired.length > 0 && (
+        <div className="notice" style={{ marginTop: 10 }}>
+          Offene Fragen aus der Aufwandsschätzung (bereits in "Offene Fragen" berücksichtigt, sofern die Bewertung
+          deswegen Klärung erfordert):
+          <ul className="open-questions">
+            {workBreakdown.clarificationsRequired.map((q, i) => (
+              <li key={i}>{q}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {workBreakdown.generalAssumptions.length > 0 && (
+        <p className="report-note" style={{ marginTop: 10 }}>
+          Übergreifende Annahmen: {workBreakdown.generalAssumptions.join("; ")}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function WorkPackageRow({ wp }: { wp: EffortWorkPackage }) {
+  return (
+    <details className="work-package-item">
+      <summary>
+        <span className="work-package-title">
+          {wp.title}
+          {wp.isLargeWorkPackage && (
+            <span title="Großes Arbeitspaket (> 16 Std. wahrscheinlich) - Zerlegung ggf. sinnvoll" style={{ marginLeft: 6, cursor: "help" }}>
+              ⚠️
+            </span>
+          )}
+        </span>
+        <span className="tag">{wp.category}</span>
+        <span className="tag">{wp.action}</span>
+        <span className="work-package-hours">
+          {wp.humanEffort.minHours}–{wp.humanEffort.maxHours} Std. (wahrsch. {wp.humanEffort.likelyHours})
+        </span>
+        <span className="tag">{Math.round(wp.confidence * 100)}%</span>
+        <span className="tag">Reuse: {wp.reuse.level}</span>
+        <span className="tag">{wp.repositoryEvidence.length} Evidenz(en)</span>
+      </summary>
+      <div className="work-package-detail">
+        <p>{wp.description}</p>
+
+        {wp.affectedComponents.length > 0 && (
+          <div>
+            <div className="work-package-detail-label">Betroffene Komponenten</div>
+            {wp.affectedComponents.join(", ")}
+          </div>
+        )}
+
+        {wp.repositoryEvidence.length > 0 && (
+          <div>
+            <div className="work-package-detail-label">Repository-Evidenz</div>
+            <ul className="context-list">
+              {wp.repositoryEvidence.map((ev, i) => (
+                <li key={i}>
+                  <code className="file-path">{ev.path}</code>
+                  {ev.symbol && <> · {ev.symbol}</>} · {ev.status}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {wp.dependencies.length > 0 && (
+          <div>
+            <div className="work-package-detail-label">Abhängig von</div>
+            {wp.dependencies.join(", ")}
+          </div>
+        )}
+
+        <div>
+          <div className="work-package-detail-label">Reuse</div>
+          {wp.reuse.level} - {wp.reuse.description}
+        </div>
+
+        {wp.effortDrivers.length > 0 && (
+          <div>
+            <div className="work-package-detail-label">Aufwandstreiber</div>
+            <ul className="context-list">
+              {wp.effortDrivers.map((d, i) => (
+                <li key={i}>
+                  {d.impact === "INCREASE" ? "+" : "–"} {d.type}: {d.description}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {wp.assumptions.length > 0 && (
+          <div>
+            <div className="work-package-detail-label">Annahmen</div>
+            <ul className="context-list">
+              {wp.assumptions.map((a, i) => (
+                <li key={i}>{a}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {wp.risks.length > 0 && (
+          <div>
+            <div className="work-package-detail-label">Risiken</div>
+            <ul className="context-list">
+              {wp.risks.map((r, i) => (
+                <li key={i}>{r}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <div>
+          <div className="work-package-detail-label">Begründung</div>
+          {wp.rationale}
+        </div>
+      </div>
+    </details>
   );
 }

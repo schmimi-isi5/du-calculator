@@ -1582,3 +1582,71 @@ code.file-path {
     display: none;
   }
 }
+
+/* Bottom-up Effort Work Breakdown (internal Management-Report view) - each
+   Work Package is a <details> whose <summary> renders the "table row"
+   (title/category/action/hours/confidence/reuse) and whose body is the
+   drill-down detail. No new UI library - same collapse pattern as
+   .inline-details, just with a richer, multi-column summary row. */
+.work-package-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.work-package-item {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.work-package-item > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.work-package-item > summary::-webkit-details-marker {
+  display: none;
+}
+
+.work-package-item > summary::before {
+  content: "▸";
+  color: var(--muted);
+}
+
+.work-package-item[open] > summary::before {
+  content: "▾";
+}
+
+.work-package-title {
+  font-weight: 800;
+  flex: 1 1 200px;
+}
+
+.work-package-hours {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.work-package-detail {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.work-package-detail-label {
+  font-weight: 800;
+  font-size: 11px;
+  color: var(--muted);
+}

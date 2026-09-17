@@ -18,7 +18,7 @@ import type {
   DirectCostEstimate,
   DuClass,
   DuResult,
-  EffortEstimate,
+  EffortWorkBreakdownOutput,
   ExistingAssetLeverage,
   ImplementationNoveltyAssessment,
   PricingStrategy,
@@ -29,7 +29,7 @@ import type {
 } from "../domain/types.js";
 import { DIMENSION_KEYS } from "../domain/types.js";
 import { computeCommercialCalculation } from "./commercialEngine.js";
-import { buildEffortEstimate } from "./effortEstimator.js";
+import { buildEffortEstimateFromWorkPackages } from "./effortEstimator.js";
 import { computePrice, type PricingConfig } from "./pricingEngine.js";
 import { buildTechnologyComparison } from "./technologyFitEngine.js";
 
@@ -136,8 +136,8 @@ export function mapScoreToClass(
 
 export interface ComputeDuResultInput {
   scores: DimensionScores;
-  /** The AI's raw corridor estimate - validated/normalized here via effortEstimator.ts, never derived from `scores`. */
-  effortEstimate: EffortEstimate;
+  /** The AI's raw Work Package breakdown - aggregated deterministically here via effortEstimator.ts, never derived from `scores`. */
+  effortWorkBreakdown: EffortWorkBreakdownOutput;
   technologyProfile: TechnologyProfile;
   existingAssetLeverage: ExistingAssetLeverage[];
   technologyNarratives: TechnologyNarrative[];
@@ -162,7 +162,7 @@ export function computeDuResult(input: ComputeDuResultInput): DuResult {
   const overallConfidence = calculateOverallConfidence(input.scores);
   const confidenceLevel = classifyConfidence(overallConfidence);
 
-  const effortEstimate = buildEffortEstimate(input.effortEstimate);
+  const effortEstimate = buildEffortEstimateFromWorkPackages(input.effortWorkBreakdown);
   const technologyComparison = buildTechnologyComparison(
     input.technologyProfile,
     input.existingAssetLeverage,

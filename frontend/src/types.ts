@@ -262,6 +262,98 @@ export const TECHNOLOGY_PROFILE_FACTORS = [
 ] as const;
 export type TechnologyProfileFactor = (typeof TECHNOLOGY_PROFILE_FACTORS)[number];
 
+// ---------------------------------------------------------------------------
+// Effort Model (C) - bottom-up Work Package estimation (effort-bottom-up-v1).
+// See backend/src/domain/effort.ts / domain/types.ts for the full contract.
+// ---------------------------------------------------------------------------
+
+export const EFFORT_WORK_PACKAGE_CATEGORIES = [
+  "ANALYSIS",
+  "ARCHITECTURE",
+  "DATA_MODEL",
+  "BACKEND",
+  "FRONTEND",
+  "INTEGRATION",
+  "AI_RAG_AGENT",
+  "AUTOMATION",
+  "MIGRATION",
+  "TESTING_QA",
+  "DEPLOYMENT",
+  "DOCUMENTATION",
+  "OTHER",
+] as const;
+export type EffortWorkPackageCategory = (typeof EFFORT_WORK_PACKAGE_CATEGORIES)[number];
+
+export type EffortWorkPackageAction = "CREATE" | "MODIFY" | "CONFIGURE" | "INTEGRATE" | "MIGRATE" | "TEST" | "DEPLOY" | "REVIEW" | "OTHER";
+export type WorkPackageReuseLevel = "NONE" | "LOW" | "MEDIUM" | "HIGH";
+export type EffortDriverImpact = "INCREASE" | "DECREASE";
+export type EffortSanityFlag =
+  | "EFFORT_REVIEW_RECOMMENDED"
+  | "LARGE_WORK_PACKAGE"
+  | "LOW_EVIDENCE"
+  | "POSSIBLE_MISSING_TESTING"
+  | "POSSIBLE_OVERLAP";
+
+export interface HumanEffortCorridor {
+  minHours: number;
+  likelyHours: number;
+  maxHours: number;
+}
+
+export interface RepositoryEvidenceRef {
+  path: string;
+  symbol: string | null;
+  status: EvidenceStatus;
+}
+
+export interface WorkPackageReuse {
+  level: WorkPackageReuseLevel;
+  description: string;
+  evidence: Evidence[];
+}
+
+export interface EffortDriver {
+  type: string;
+  impact: EffortDriverImpact;
+  description: string;
+  evidence: Evidence[];
+}
+
+export interface EffortWorkPackage {
+  id: string;
+  title: string;
+  category: EffortWorkPackageCategory;
+  description: string;
+  action: EffortWorkPackageAction;
+  affectedComponents: string[];
+  repositoryEvidence: RepositoryEvidenceRef[];
+  dependencies: string[];
+  reuse: WorkPackageReuse;
+  humanEffort: HumanEffortCorridor;
+  confidence: number;
+  rationale: string;
+  assumptions: string[];
+  risks: string[];
+  effortDrivers: EffortDriver[];
+  isLargeWorkPackage: boolean;
+}
+
+export interface EffortCompletenessAssessment {
+  complete: boolean;
+  missingAreas: string[];
+  overlapWarnings: string[];
+}
+
+export interface EffortWorkBreakdown {
+  workPackages: EffortWorkPackage[];
+  completenessAssessment: EffortCompletenessAssessment;
+  clarificationsRequired: string[];
+  generalAssumptions: string[];
+  calculationMethod: "BOTTOM_UP_WORK_PACKAGE_AGGREGATION";
+  calculationModelVersion: "effort-bottom-up-v1";
+  flags: EffortSanityFlag[];
+}
+
 /** AI_NATIVE's own human-effort corridor for this requirement - not derived from the DU dimension scores. See backend/src/scoring/effortEstimator.ts. */
 export interface EffortEstimate {
   minHours: number;
@@ -269,6 +361,8 @@ export interface EffortEstimate {
   maxHours: number;
   confidence: number;
   rationale: LocalizedText;
+  /** Present only when this estimate came from bottom-up Work Package aggregation (effort-bottom-up-v1) - absent for an older/legacy estimate. */
+  workBreakdown?: EffortWorkBreakdown;
 }
 
 /** How the commercial price is derived - see backend/src/scoring/pricingEngine.ts. */
@@ -499,6 +593,7 @@ export interface EffortPredictionSnapshot {
   predictedEffortLikelyHours: number;
   predictedEffortMaxHours: number;
   predictedEffortConfidence: number | null;
+  effortWorkBreakdown: EffortWorkBreakdown | null;
   effortBenchmark: EffortBenchmarkInfo | null;
   effortAdjustment: CommercialAdjustment | null;
   predictedTechnologyComparison: TechnologyAssessment[];
