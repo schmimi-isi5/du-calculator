@@ -11,6 +11,7 @@
 // together for the API response - but each one's actual computation lives
 // in its own module and stays independently testable.
 
+import type { BaseDuClass } from "../domain/commercial.js";
 import type {
   DimensionKey,
   DimensionScores,
@@ -19,8 +20,9 @@ import type {
   DuResult,
   EffortEstimate,
   ExistingAssetLeverage,
-  InnovationAssessment,
+  ImplementationNoveltyAssessment,
   PricingStrategy,
+  ReusableInnovationAssessment,
   ScoringStatus,
   TechnologyNarrative,
   TechnologyProfile,
@@ -140,7 +142,9 @@ export interface ComputeDuResultInput {
   existingAssetLeverage: ExistingAssetLeverage[];
   technologyNarratives: TechnologyNarrative[];
   directCosts: DirectCostEstimate;
-  innovation: InnovationAssessment;
+  implementationNovelty: ImplementationNoveltyAssessment;
+  /** Captured/persisted for later calibration only - deliberately never routed into commercialEngine.ts, since it produces no automatic Commercial DU or price adjustment yet. */
+  reusableInnovationIp: ReusableInnovationAssessment;
   pricingStrategy: PricingStrategy;
   pricingConfig: PricingConfig;
 }
@@ -166,11 +170,13 @@ export function computeDuResult(input: ComputeDuResultInput): DuResult {
     effortEstimate,
   );
 
+  const baseDuClass: BaseDuClass | null = duClass === "XXL" ? null : duClass;
   const commercialCalculation = computeCommercialCalculation({
     baseDU: developmentUnits,
+    baseDuClass,
     aiNativeEffort: effortEstimate,
     directCosts: input.directCosts,
-    innovation: input.innovation,
+    implementationNovelty: input.implementationNovelty,
   });
   const commercialDevelopmentUnits = commercialCalculation.suggestedCommercialDU;
   // Filled in here (not commercialEngine.ts) since only the caller knows
@@ -199,10 +205,11 @@ export function computeDuResult(input: ComputeDuResultInput): DuResult {
     effortEstimate,
     technologyComparison,
     directCosts: input.directCosts,
-    innovation: input.innovation,
+    implementationNovelty: input.implementationNovelty,
+    reusableInnovationIp: input.reusableInnovationIp,
     commercialCalculation: { ...commercialCalculation, targetCommercialValue },
     commercialDevelopmentUnits,
-    calculationModelVersion: "commercial-du-v1",
+    calculationModelVersion: "commercial-du-v2",
   };
 }
 

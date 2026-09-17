@@ -96,8 +96,15 @@ function weightedCapabilityEffect(profile: TechnologyProfile, capability: Capabi
   return relevanceSum > 0 ? weightedSum / relevanceSum : 0;
 }
 
-/** Raw effort score in [0, 2]: 1 - capabilityEffect. Lower = this technology fits better = less effort. */
-function rawEffortScore(profile: TechnologyProfile, capability: CapabilityProfile): number {
+/**
+ * Raw effort score in [0, 2]: 1 - capabilityEffect. Lower = this technology
+ * fits better = less effort. Exported (only) so tests can prove this
+ * formula treats every CapabilityProfile identically regardless of which
+ * technology it belongs to - there is no technology-name-based branching
+ * anywhere in this module (see technologyFitEngine.test.ts "CLASSIC
+ * Symmetry" - spec commercial-du-calibration-v2 Test J).
+ */
+export function rawEffortScore(profile: TechnologyProfile, capability: CapabilityProfile): number {
   return 1 - weightedCapabilityEffect(profile, capability);
 }
 

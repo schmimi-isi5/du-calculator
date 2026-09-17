@@ -255,13 +255,26 @@ export const DirectCostEstimateSchema = z.object({
 });
 
 /**
- * Whether this requirement genuinely requires new technical solutions,
- * experimentation, or produces reusable new ISIFIVE IP - NOT a proxy for
- * "uses AI = expensive". See ai/prompts.ts INNOVATION_RULE.
+ * "How much technically new or not-yet-mastered ground must ISIFIVE cover
+ * for THIS specific requirement?" - see ai/prompts.ts
+ * IMPLEMENTATION_NOVELTY_RULE. NOT a proxy for "uses AI = expensive".
  */
-export const InnovationAssessmentSchema = z.object({
+export const ImplementationNoveltyAssessmentSchema = z.object({
   level: z.enum(["LOW", "MEDIUM", "HIGH"]),
-  rationale: z.string().describe("In German - grounded in what specifically is or isn't novel here."),
+  rationale: z.string().describe("In German - grounded in what specifically is or isn't technically novel here for ISIFIVE."),
+  evidence: z.array(EvidenceSchema),
+  confidence: z.number().min(0).max(1),
+});
+
+/**
+ * "Does delivering this create new reusable technical substance ISIFIVE can
+ * use again elsewhere?" - see ai/prompts.ts REUSABLE_INNOVATION_RULE.
+ * Captured for later calibration only - never produces an automatic
+ * Commercial DU or price adjustment.
+ */
+export const ReusableInnovationAssessmentSchema = z.object({
+  level: z.enum(["NONE", "LOW", "MEDIUM", "HIGH"]),
+  rationale: z.string().describe("In German - what reusable substance (if any) this specifically creates for ISIFIVE."),
   evidence: z.array(EvidenceSchema),
   confidence: z.number().min(0).max(1),
 });
@@ -287,7 +300,8 @@ export const RequirementAssessmentSchema = z.object({
     .array(TechnologyNarrativeSchema)
     .describe("Exactly one entry per technology in TECHNOLOGY_IDS (AI_NATIVE, CLASSIC, N8N, INTREXX)."),
   directCosts: DirectCostEstimateSchema,
-  innovation: InnovationAssessmentSchema,
+  implementationNovelty: ImplementationNoveltyAssessmentSchema,
+  reusableInnovationIp: ReusableInnovationAssessmentSchema,
 });
 
 // ---------------------------------------------------------------------------

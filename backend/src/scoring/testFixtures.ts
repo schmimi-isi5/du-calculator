@@ -12,7 +12,8 @@ import type {
   DirectCostItem,
   EffortEstimate,
   ExistingAssetLeverage,
-  InnovationAssessment,
+  ImplementationNoveltyAssessment,
+  ReusableInnovationAssessment,
   TechnologyNarrative,
   TechnologyProfile,
 } from "../domain/types.js";
@@ -105,6 +106,16 @@ export function buildEstimatedCostItem(amountEur: number, costType: DirectCostIt
   return { amountEur, costType, status: "ESTIMATED", rationale: "test rationale" };
 }
 
-export function buildInnovationAssessment(level: InnovationAssessment["level"] = "LOW", confidence = 0.8): InnovationAssessment {
+export function buildImplementationNoveltyAssessment(
+  level: ImplementationNoveltyAssessment["level"] = "LOW",
+  confidence = 0.8,
+): ImplementationNoveltyAssessment {
+  return { level, rationale: "test rationale", evidence: [], confidence };
+}
+
+export function buildReusableInnovationAssessment(
+  level: ReusableInnovationAssessment["level"] = "NONE",
+  confidence = 0.8,
+): ReusableInnovationAssessment {
   return { level, rationale: "test rationale", evidence: [], confidence };
 }

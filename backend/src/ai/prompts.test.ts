@@ -56,9 +56,10 @@ describe("buildAssessmentPrompt - GREENFIELD mode", () => {
     expect(prompt.system).toContain("CLASSIC_CUSTOM_DEVELOPMENT");
   });
 
-  it("always includes the direct cost and innovation rules", () => {
+  it("always includes the direct cost, implementation novelty, and reusable innovation rules", () => {
     const prompt = buildAssessmentPrompt(REQUIREMENT, PROFILE, CONTEXT, knowledge, "standard");
     expect(prompt.system).toContain("Direct costs (directCosts)");
-    expect(prompt.system).toContain("Innovation assessment (innovation)");
+    expect(prompt.system).toContain("Implementation novelty (implementationNovelty)");
+    expect(prompt.system).toContain("Reusable innovation / IP (reusableInnovationIp)");
   });
 });
