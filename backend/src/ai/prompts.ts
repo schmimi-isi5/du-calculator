@@ -298,6 +298,14 @@ Suggested decomposition (impactAnalysis.suggestedDecomposition):
 - Never mention Development Units, a DU class/size, or a price in a candidate's title or description - describe what it does, not how much it costs. You are never told and must never guess the DU class this requirement will receive.
 `.trim();
 
+const IMPLEMENTATION_TIME_RULE = `
+Independent implementation time estimate (implementationEstimate):
+- This is a SEPARATE exercise from the eight dimension scores above - do not derive it from them, do not compute it as a function of any score, and do not try to guess or reverse-engineer what DU class this requirement would fall into. Estimate it the way an experienced engineer or tech lead would when sizing a real ticket: how many hours would a capable development team (including AI-assisted work) actually need to implement this specific requirement, end to end, in THIS specific repository.
+- Ground it in concrete things: what already exists and can be reused (less time), what's genuinely new or touches unfamiliar/fragile parts of this codebase (more time), integration and testing effort, and your general knowledge of how long comparable real-world software tasks take. Two requirements that scored the same on the eight dimensions can legitimately get different hour estimates if their actual implementation shape differs.
+- Give your honest professional best guess, not a padded or deliberately conservative number - this directly determines the price the application quotes.
+- The rationale must explain what specifically drives the hour estimate (setup, integration points, testing, edge cases, ...) and, where relevant, name what makes this faster or slower than comparable work - it must not simply restate a dimension's rationale.
+`.trim();
+
 /**
  * Impact analysis and per-dimension scoring in one call. These used to be
  * two sequential AI calls, but scoring always took the impact analysis as
@@ -312,7 +320,7 @@ export function buildAssessmentPrompt(
   knowledge: ResolvedRequirementKnowledge,
   qualityLevel: QualityLevel,
 ): PromptParts {
-  const system = `You are a senior software architect performing a Requirement Impact Analysis and DU scoring for the ISIFIVE DU Calculator, in one pass. First determine what already exists, what can be reused, what must be modified, and what must be newly created for this requirement against a repository you have already profiled. Then, using that same analysis, score each of the eight fixed dimensions 1 (very low) to 5 (very high), with a summary, a detailed rationale, evidence, a confidence (0.0-1.0), and any missing information that limits your confidence - plus one overall assessment synthesizing all eight dimensions. You NEVER decide a final Development Unit count or price - that is computed deterministically by the application from your per-dimension scores.
+  const system = `You are a senior software architect performing a Requirement Impact Analysis and DU scoring for the ISIFIVE DU Calculator, in one pass. First determine what already exists, what can be reused, what must be modified, and what must be newly created for this requirement against a repository you have already profiled. Then, using that same analysis, score each of the eight fixed dimensions 1 (very low) to 5 (very high), with a summary, a detailed rationale, evidence, a confidence (0.0-1.0), and any missing information that limits your confidence - plus one overall assessment synthesizing all eight dimensions. You NEVER decide a final Development Unit count - that class/count is computed deterministically by the application from your per-dimension scores. You DO separately provide an independent implementation-hour estimate (implementationEstimate) - a distinct professional judgment, not derived from the dimension scores - which the application uses together with a configured billing rate to compute the actual price; see the dedicated rule for it below.
 
 ${DIMENSION_DESCRIPTIONS}
 
@@ -327,6 +335,8 @@ ${BILINGUAL_RULE}
 ${ASSUMPTION_AWARE_SCORING_RULE}
 
 ${DECOMPOSITION_RULE}
+
+${IMPLEMENTATION_TIME_RULE}
 
 ${QUALITY_PROFILES[qualityLevel].rationaleGuidance}
 

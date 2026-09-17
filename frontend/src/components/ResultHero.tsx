@@ -82,8 +82,8 @@ export function ResultHero({ result }: Props) {
             <div style={{ fontSize: 16, fontWeight: 800 }}>{du.timeEstimate.totalHours.toFixed(1)} Std.</div>
             <div style={{ fontSize: 11, opacity: 0.85 }}>
               davon {du.timeEstimate.promptingHours.toFixed(1)} Std. KI-Prompting, {du.timeEstimate.developmentHours.toFixed(1)}{" "}
-              Std. klassische Entwicklung - beides Personalzeit ({du.timeEstimate.hoursPerDU} Std./DU angenommen; reine
-              KI-API-Kosten separat unter „KI-Kosten")
+              Std. klassische Entwicklung - beides Personalzeit, eigenständig von der KI geschätzt (nicht aus der
+              DU-Klasse abgeleitet; reine KI-API-Kosten separat unter „KI-Kosten")
             </div>
           </>
         )}

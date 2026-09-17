@@ -168,28 +168,47 @@ export interface ScoringOutput {
   overallAssessment: LocalizedText;
 }
 
+/**
+ * An independent, experience-based time estimate from the AI - not derived
+ * from the DU dimension scores or any DU/hours formula. See
+ * domain/schemas.ts ImplementationEstimateSchema for the full contract.
+ */
+export interface ImplementationEstimate {
+  estimatedHours: number;
+  rationale: LocalizedText;
+}
+
 /** Impact analysis and scoring produced together in one AI call - see AIProvider.assessRequirement. */
 export interface RequirementAssessment {
   impactAnalysis: ImpactAnalysis;
   dimensions: DimensionScores;
   overallAssessment: LocalizedText;
+  implementationEstimate: ImplementationEstimate;
 }
 
 export type DuClass = "XS" | "S" | "M" | "L" | "XL" | "XXL";
 
 /**
- * Estimated internal effort in hours, derived deterministically from the DU
- * result (scoring/effortEstimator.ts) - never AI-invented. hoursPerDU is the
- * operator-configured business assumption (config.ts HOURS_PER_DU) that
- * produced this, kept alongside the result so it's always traceable rather
- * than a bare number. The prompting/development split is derived from how
- * much of the weighted score the aiComplexity dimension itself accounts for.
+ * Estimated internal effort in hours. totalHours is the AI's own
+ * ImplementationEstimate.estimatedHours (an independent, experience-based
+ * judgment - NOT derived from the DU dimension scores or a DU/hours
+ * formula) - this is the number that determines the customer's price. The
+ * prompting/development split IS still computed deterministically
+ * (scoring/effortEstimator.ts), from how much of the weighted score the
+ * aiComplexity dimension itself accounts for. referenceHoursFromDU and
+ * hasSignificantDeviationFromDuReference are a separate, DU-based sanity
+ * check kept only for internal comparison - never used to override or
+ * adjust the AI's own estimate.
  */
 export interface TimeEstimate {
   totalHours: number;
   developmentHours: number;
   promptingHours: number;
+  rationale: LocalizedText;
+  /** The old DU * HOURS_PER_DU figure - a rough, independent cross-check reference only, not used to compute totalHours. */
+  referenceHoursFromDU: number;
   hoursPerDU: number;
+  hasSignificantDeviationFromDuReference: boolean;
 }
 
 export type AlternativeApproachId = "classicalDevelopment" | "n8n" | "intrexx" | "n8nIntrexxCombined";
