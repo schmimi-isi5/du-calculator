@@ -62,7 +62,11 @@ header.app-header {
 }
 
 main {
-  max-width: 1260px;
+  /* At least ~80% of the viewport on realistic desktop widths (1260px was
+     leaving huge empty gutters on wider screens), capped so line lengths
+     and the .grid sidebar layout stay sane on very large/ultrawide
+     monitors instead of stretching indefinitely. */
+  width: min(92%, 1900px);
   margin: 0 auto;
   padding: 20px 18px 60px;
 }
