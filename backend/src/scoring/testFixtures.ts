@@ -11,6 +11,8 @@ import type {
   DirectCostEstimate,
   DirectCostItem,
   EffortEstimate,
+  EffortWorkBreakdownOutput,
+  EffortWorkPackageInput,
   ExistingAssetLeverage,
   ImplementationNoveltyAssessment,
   ReusableInnovationAssessment,
@@ -78,6 +80,7 @@ export function buildTechnologyNarratives(): TechnologyNarrative[] {
   }));
 }
 
+/** @deprecated Only for tests that consume a plain EffortEstimate directly (commercialEngine.test.ts, technologyFitEngine.test.ts) - computeDuResult now takes an EffortWorkBreakdownOutput, see buildEffortWorkBreakdownOutput. */
 export function buildEffortEstimate(minHours: number, likelyHours: number, maxHours: number, confidence = 0.8): EffortEstimate {
   return {
     minHours,
@@ -85,6 +88,50 @@ export function buildEffortEstimate(minHours: number, likelyHours: number, maxHo
     maxHours,
     confidence,
     rationale: { en: "test rationale", de: "Test-Begründung" },
+  };
+}
+
+export function buildWorkPackage(overrides: Partial<EffortWorkPackageInput> = {}): EffortWorkPackageInput {
+  return {
+    id: overrides.id ?? "wp-1",
+    title: overrides.title ?? "Test work package",
+    category: overrides.category ?? "BACKEND",
+    description: overrides.description ?? "test description",
+    action: overrides.action ?? "CREATE",
+    affectedComponents: overrides.affectedComponents ?? [],
+    repositoryEvidence: overrides.repositoryEvidence ?? [],
+    dependencies: overrides.dependencies ?? [],
+    reuse: overrides.reuse ?? { level: "NONE", description: "test reuse", evidence: [] },
+    humanEffort: overrides.humanEffort ?? { minHours: 2, likelyHours: 4, maxHours: 7 },
+    confidence: overrides.confidence ?? 0.8,
+    rationale: overrides.rationale ?? "test rationale",
+    assumptions: overrides.assumptions ?? [],
+    risks: overrides.risks ?? [],
+    effortDrivers: overrides.effortDrivers ?? [],
+  };
+}
+
+/** Convenience single-Work-Package breakdown that aggregates to exactly (minHours, likelyHours, maxHours, confidence) - a drop-in replacement for the old single-corridor buildEffortEstimate() wherever a test only cares about the resulting totals, not the Work Package internals. */
+export function buildEffortWorkBreakdownOutput(
+  minHours: number,
+  likelyHours: number,
+  maxHours: number,
+  confidence = 0.8,
+): EffortWorkBreakdownOutput {
+  return buildEffortWorkBreakdownFromPackages([
+    buildWorkPackage({ id: "wp-1", humanEffort: { minHours, likelyHours, maxHours }, confidence }),
+  ]);
+}
+
+export function buildEffortWorkBreakdownFromPackages(
+  workPackages: EffortWorkPackageInput[],
+  overrides: Partial<Omit<EffortWorkBreakdownOutput, "workPackages">> = {},
+): EffortWorkBreakdownOutput {
+  return {
+    workPackages,
+    completenessAssessment: overrides.completenessAssessment ?? { complete: true, missingAreas: [], overlapWarnings: [] },
+    clarificationsRequired: overrides.clarificationsRequired ?? [],
+    generalAssumptions: overrides.generalAssumptions ?? [],
   };
 }
 

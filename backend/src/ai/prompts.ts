@@ -305,14 +305,38 @@ Suggested decomposition (impactAnalysis.suggestedDecomposition):
 - Never mention Development Units, a DU class/size, or a price in a candidate's title or description - describe what it does, not how much it costs. You are never told and must never guess the DU class this requirement will receive.
 `.trim();
 
-const EFFORT_ESTIMATE_RULE = `
-Independent AI-native effort estimate (effortEstimate):
-- This is a SEPARATE exercise from the eight dimension scores above - do not derive it from them, do not compute it as a function of any score, and do not try to guess or reverse-engineer what DU class this requirement would fall into. Estimate it the way an experienced engineer or tech lead would when sizing a real ticket: how many HUMAN hours would AI_NATIVE production (see the anti-bias rule below - this is git-based custom development with coding agents like Claude Code, not classical unassisted manual coding) actually need for this specific requirement, end to end, in THIS specific repository.
-- Count ONLY human time: analysis, briefing/steering the coding agents, review, corrections, manual/individual development work that agents cannot do well, testing/QA, deployment/integration. Never state or imply "the AI works for N hours" - the agents' own compute time is not what is being estimated here.
-- Give a genuine range (minHours/maxHours), not a single number dressed up as a range - width should reflect your actual uncertainty about this specific requirement, not a fixed percentage padding. likelyHours is your single best guess, which should usually (not always) sit somewhere between minHours and maxHours.
-- Ground it in concrete things: what already exists and can be reused (less time), what's genuinely new or touches unfamiliar/fragile parts of this codebase (more time), integration and testing effort, and your general knowledge of how long comparable real-world software tasks take. Two requirements that scored the same on the eight dimensions can legitimately get different estimates if their actual implementation shape differs.
-- Give your honest professional best guess, not a padded or deliberately conservative number - this directly determines the price the application quotes.
-- The rationale must explain what specifically drives the corridor width and the likely figure (setup, integration points, testing, edge cases, ...) - it must not simply restate a dimension's rationale.
+const EFFORT_WORK_BREAKDOWN_RULE = `
+Bottom-up human-effort estimation (effortWorkBreakdown) - this REPLACES giving one independent total for the whole requirement:
+- The question is: "How many HUMAN personal hours would an ISIFIVE employee need to deliver this specific requirement with our AI-native production method?" AI_NATIVE means coding agents (Claude Code) doing AI-assisted code analysis, implementation, test generation, and refactoring, reusing existing components wherever possible, with a human handling architecture decisions, briefing/steering the agents, review, corrections, manual work agents cannot do well, integration, testing, and deployment.
+- Count ONLY human personal time. NEVER a coding agent's own runtime, token consumption, CPU time, or wait time - there is no such thing as "the AI works for N hours" here.
+- Do NOT give one holistic total for the requirement. Instead:
+  1. Break the requirement down into concrete Work Packages (workPackages) - independently estimable units of work, grounded primarily in the Requirement Impact Analysis you already produced above (existing/reusable/modify/create/dataChanges/integrations/tests/risks) plus the repository (or, when there is no repository yet, the requirement/acceptance criteria/constraints/assumptions alone - see the note on that below, if applicable). Do not run a second, independent repository analysis - reuse the impact analysis you already did.
+  2. For EACH Work Package, estimate its own human-effort corridor (humanEffort: minHours/likelyHours/maxHours) and confidence - never a shared, requirement-wide number.
+  3. Perform a second, self-check pass over your own list before finalizing (completenessAssessment): did you miss a necessary piece of work? Do any two Work Packages describe overlapping/double-counted work? Report this honestly - both arrays are usually empty, and an empty result is a perfectly normal, common outcome, not something to force content into.
+- You NEVER state or imply a total (no totalHours, no overall confidence, no "in total this is about N hours" in any rationale). This application sums your Work Packages' hours and computes overall confidence deterministically - if you provide your own total anywhere, it will be ignored, so do not waste effort computing one.
+
+Work Package granularity and identity:
+- Categories: ANALYSIS, ARCHITECTURE, DATA_MODEL, BACKEND, FRONTEND, INTEGRATION, AI_RAG_AGENT, AUTOMATION, MIGRATION, TESTING_QA, DEPLOYMENT, DOCUMENTATION, OTHER. These exist for explainability and later calibration/grouping only - they never imply a fixed hours value, and NOT every category needs a Work Package (most requirements legitimately don't touch most categories).
+- Actions: CREATE, MODIFY, CONFIGURE, INTEGRATE, MIGRATE, TEST, DEPLOY, REVIEW, OTHER. In EXISTING_SYSTEM mode, actually check whether a component already exists before defaulting to CREATE - "this component exists and only needs extending" (MODIFY) is very different from building it from scratch, and the repository evidence should tell you which applies.
+- Size Work Packages as real, fachlich-technisch sinnvolle development units - typically ~1-16 likely human hours. Avoid "implement the entire requirement" as one package (too coarse to explain or later calibrate) and avoid microscopic packages like "open a file" (too granular to be meaningful). A Work Package clearly larger than ~16h is not wrong, but consider whether it can be usefully split further.
+- Work Packages should be MECE-oriented (mutually exclusive, collectively exhaustive) - avoid describing the same underlying work twice under different titles (e.g. "implement customer memory" and "implement customer memory retrieval" as two separate packages when they are the same work). Perfect non-overlap is not required, but obvious double-counting is exactly what the completeness self-check above must catch.
+- dependencies lists other Work Package ids (within this same breakdown) this one depends on - for explainability/sequencing only. This estimates PERSONNEL effort, not calendar time: two Work Packages that could run in parallel still both count their full hours (they are not deduplicated or divided) - a 4h package and a 5h package are 9h of human effort regardless of whether they could happen at the same time.
+
+Repository evidence and reuse:
+- EXISTING_SYSTEM mode: ground repositoryEvidence in real files/symbols from the repository context provided above wherever a Work Package touches or extends something that exists - path plus the concrete symbol/function/class name when you know it. Never invent a path or symbol that isn't actually in the provided context.
+- reuse (NONE/LOW/MEDIUM/HIGH) explains how much this Work Package leans on something that already exists - HIGH: an existing service/component can be used nearly as-is; MEDIUM: an existing pattern/base component helps; LOW: only general infrastructure is reusable; NONE: fully new. This is an input to how you already sized humanEffort (a HIGH-reuse package should already show up as fewer hours) - do NOT additionally apply a separate discount on top of your own humanEffort number; reuse is an explanation/calibration signal, not a second multiplier.
+- effortDrivers name the 1-3 biggest reasons this specific Work Package's effort is higher or lower than a "default" package of its kind (e.g. existing code reuse, custom business logic, an unfamiliar integration, data migration, missing test infrastructure, AI/RAG complexity, authorization, UI complexity, an uncertain third-party API, legacy code) - explanatory only, never a percentage formula.
+
+Coding-agent productivity - do not default to either extreme:
+- Do not estimate as if a developer manually writes every line by hand when coding agents can generate a well-trodden pattern quickly (e.g. a CRUD component matching an existing pattern in this repository should not be estimated at manual-development speed).
+- Do not assume coding agents eliminate architecture decisions, code review, debugging, integration, testing, or deployment effort - those remain genuinely human work regardless of how the implementation code itself gets generated.
+- Never apply a single fixed productivity multiplier across the board - judge each Work Package on its own concrete technical shape.
+
+Uncertainty:
+- Corridor width and confidence are two DIFFERENT signals - do not mechanically derive one from the other. A well-understood, low-risk Work Package should have a narrow corridor AND high confidence (e.g. 3/4/5h at 0.90); a genuinely unclear one should have both a wider corridor AND lower confidence (e.g. 3/7/15h at 0.55). Ground both in the actual evidence for that specific package.
+- Prefer whole or half hours (2h, 4.5h, 7h) over false minute-level precision (2.37h, 4.83h) - you are not that precise, and pretending to be misleads whoever reads this later.
+
+Clarifications required (clarificationsRequired) - the interactive clarification round for this requirement has already closed by the time you produce this breakdown, so anything listed here is folded directly into the final result's open questions, not asked interactively. Apply the same materiality discipline as the rest of this application: list a question here ONLY if the missing information would likely add or remove a Work Package, flip a Work Package between CREATE and MODIFY, materially change a large Work Package, or materially shift the overall total - never for a technical detail the development team can decide on its own. This should usually be empty; prefer resolving a gap via repository evidence or a stated assumption (assumptions/generalAssumptions) instead of listing a question.
 `.trim();
 
 const TECHNOLOGY_PROFILE_FACTOR_DESCRIPTIONS = `
@@ -382,6 +406,7 @@ GREENFIELD mode - IMPORTANT: there is no existing repository for this requiremen
 - Never mark anything VERIFIED or INFERRED from "the repository" - there is none. existingAssetLeverage must be null (UNKNOWN) for every technology, since there is no codebase to evaluate reuse against.
 - Base your assessment on the requirement, acceptance criteria, constraints, clarifications, and any target architecture the customer describes instead.
 - A missing repository is not an error and not a reason to lower confidence across the board - only lower confidence for the specific things that genuinely depend on information a repository would have provided.
+- Every Work Package's repositoryEvidence must be an empty array - there is no repository to cite. Every Work Package's action should default to CREATE unless the requirement itself describes something as already existing (e.g. an external system to integrate with).
 `.trim();
 
 /**
@@ -401,7 +426,7 @@ export function buildAssessmentPrompt(
 ): PromptParts {
   const system = `You are a senior software architect performing a Requirement Impact Analysis, DU scoring, and technology/effort/commercial assessment for the ISIFIVE DU Calculator, in one pass. First determine what already exists, what can be reused, what must be modified, and what must be newly created for this requirement against a repository you have already profiled. Then, using that same analysis, score each of the eight fixed dimensions 1 (very low) to 5 (very high), with a summary, a detailed rationale, evidence, a confidence (0.0-1.0), and any missing information that limits your confidence - plus one overall assessment synthesizing all eight dimensions. You NEVER decide a final Development Unit count - that class/count is computed deterministically by the application from your per-dimension scores alone.
 
-Separately - and this is NOT a function of the eight dimension scores - you also assess: an independent AI-native human-effort estimate (effortEstimate), the requirement's technical shape across 12 factors (technologyProfile), how much each production method (AI-native custom code, classical manual custom code, n8n, Intrexx) can lean on what already exists in this repository (existingAssetLeverage), a qualitative advantages/disadvantages read per production method (technologyNarratives), structured direct costs (directCosts), how much technically new ground this specific requirement covers for ISIFIVE (implementationNovelty), and whether it creates reusable technical substance for future work (reusableInnovationIp). The application computes the actual relative effort, Commercial DU, and price deterministically from these - you never state a fit percentage, a relative effort, a DU class, a Commercial DU number, or a price yourself. See the dedicated rules for all of this below.
+Separately - and this is NOT a function of the eight dimension scores - you also assess: a bottom-up, repository-grounded human-effort Work Breakdown (effortWorkBreakdown - concrete Work Packages with their own effort corridors, NOT one independent total for the whole requirement), the requirement's technical shape across 12 factors (technologyProfile), how much each production method (AI-native custom code, classical manual custom code, n8n, Intrexx) can lean on what already exists in this repository (existingAssetLeverage), a qualitative advantages/disadvantages read per production method (technologyNarratives), structured direct costs (directCosts), how much technically new ground this specific requirement covers for ISIFIVE (implementationNovelty), and whether it creates reusable technical substance for future work (reusableInnovationIp). The application computes the actual total effort, relative effort, Commercial DU, and price deterministically from these - you never state a fit percentage, a relative effort, a DU class, a Commercial DU number, or a price yourself. See the dedicated rules for all of this below.
 
 ${DIMENSION_DESCRIPTIONS}
 
@@ -417,7 +442,7 @@ ${ASSUMPTION_AWARE_SCORING_RULE}
 
 ${DECOMPOSITION_RULE}
 
-${EFFORT_ESTIMATE_RULE}
+${EFFORT_WORK_BREAKDOWN_RULE}
 
 ${TECHNOLOGY_PROFILE_RULE}
 

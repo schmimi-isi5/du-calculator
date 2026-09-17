@@ -3,22 +3,37 @@ import type { ScoringResult } from "../domain/types.js";
 import {
   buildDimensionScores,
   buildDirectCostEstimate,
-  buildEffortEstimate,
+  buildEffortWorkBreakdownFromPackages,
   buildEstimatedCostItem,
   buildExistingAssetLeverage,
   buildImplementationNoveltyAssessment,
   buildReusableInnovationAssessment,
   buildTechnologyNarratives,
   buildTechnologyProfile,
+  buildWorkPackage,
 } from "../scoring/testFixtures.js";
 import { computeDuResult } from "../scoring/duEngine.js";
 import { buildCustomerReport } from "./customerReport.js";
+
+const SENSITIVE_WORK_BREAKDOWN = buildEffortWorkBreakdownFromPackages([
+  buildWorkPackage({
+    id: "wp-secret-1",
+    title: "Interne Kundendaten-Migration",
+    humanEffort: { minHours: 10, likelyHours: 20, maxHours: 30 },
+    affectedComponents: ["internal-billing-service"],
+    dependencies: ["wp-secret-0"],
+    repositoryEvidence: [{ path: "src/services/customerMemory.ts", symbol: "CustomerMemoryService", status: "VERIFIED" }],
+    rationale: "internal effort rationale - do not show a customer how we sized this",
+    risks: ["internal risk: legacy auth module is fragile"],
+    assumptions: ["internal assumption: vector store already sharded"],
+  }),
+]);
 
 function buildScoringResult(): ScoringResult {
   const scores = buildDimensionScores();
   const duResult = computeDuResult({
     scores,
-    effortEstimate: buildEffortEstimate(30, 36, 42),
+    effortWorkBreakdown: SENSITIVE_WORK_BREAKDOWN,
     technologyProfile: buildTechnologyProfile({ customBusinessLogic: { score: 4 } }),
     existingAssetLeverage: buildExistingAssetLeverage(),
     technologyNarratives: buildTechnologyNarratives(),
@@ -94,6 +109,27 @@ describe("buildCustomerReport", () => {
     expect(serialized).not.toContain("internal risk note");
     expect(serialized).not.toContain("estimatedHours");
     expect(serialized).not.toContain("fitConfidence");
+  });
+
+  // Test K (bottom-up effort spec section 42) - Work Packages can carry
+  // sensitive technical detail (file paths, internal services, risks,
+  // assumptions) that must never reach the public, unauthenticated share
+  // link. buildCustomerReport never even reads du.effortEstimate, but this
+  // regression test guards against that ever changing silently.
+  it("never leaks Work Package internals (repository paths, dependencies, internal rationale/risks/assumptions)", () => {
+    const report = buildCustomerReport(buildScoringResult())!;
+    const serialized = JSON.stringify(report);
+
+    expect(report).not.toHaveProperty("effortEstimate");
+    expect(serialized).not.toContain("workPackages");
+    expect(serialized).not.toContain("workBreakdown");
+    expect(serialized).not.toContain("wp-secret");
+    expect(serialized).not.toContain("customerMemory.ts");
+    expect(serialized).not.toContain("CustomerMemoryService");
+    expect(serialized).not.toContain("internal-billing-service");
+    expect(serialized).not.toContain("internal effort rationale");
+    expect(serialized).not.toContain("legacy auth module is fragile");
+    expect(serialized).not.toContain("vector store already sharded");
   });
 
   it("only includes RECURRING_RUNTIME/BOTH direct costs, never ONE_TIME_DEVELOPMENT ones", () => {

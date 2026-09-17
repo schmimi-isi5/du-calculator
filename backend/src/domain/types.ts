@@ -15,6 +15,13 @@
 //   E) Pricing Model     - commercial price, decoupled from production effort (scoring/pricingEngine.ts)
 
 import type { TechnologyId, TechnologyKey, TechnologyProfileFactor } from "./technology.js";
+import type {
+  EffortDriverImpact,
+  EffortSanityFlag,
+  EffortWorkPackageAction,
+  EffortWorkPackageCategory,
+  WorkPackageReuseLevel,
+} from "./effort.js";
 
 export type RepositoryStatus =
   | "NOT_ANALYZED"
@@ -256,14 +263,153 @@ export interface TechnologyNarrative {
   disadvantages: string[];
 }
 
+// ---------------------------------------------------------------------------
+// Effort Model (C) - bottom-up human-effort estimation (effort-bottom-up-v1).
+// See domain/effort.ts for the category/action/reuse-level vocabularies and
+// tuning constants. The AI identifies and estimates Work Packages only; the
+// application aggregates the total corridor and overall confidence
+// deterministically (scoring/effortEstimator.ts) - the AI never states an
+// independent total that could diverge from the sum of its own Work
+// Packages (spec: "AI analyzes and estimates components. Application
+// aggregates deterministically.").
+// ---------------------------------------------------------------------------
+
+export interface HumanEffortCorridor {
+  minHours: number;
+  likelyHours: number;
+  maxHours: number;
+}
+
+/** A concrete file/symbol this Work Package is grounded in - EXISTING_SYSTEM mode only; always empty in GREENFIELD (no repository to cite). Never invented - see EvidenceStatus. */
+export interface RepositoryEvidenceRef {
+  path: string;
+  symbol: string | null;
+  status: EvidenceStatus;
+}
+
+/**
+ * How much this Work Package can lean on an existing component - an input/
+ * explanation/calibration signal, never a second discount stacked on top of
+ * the AI's own humanEffort estimate for this package (spec: "Reuse nicht
+ * doppelt verrechnen" - the AI already accounts for reuse when it estimates
+ * humanEffort; this field explains why, it does not further reduce it).
+ */
+export interface WorkPackageReuse {
+  level: WorkPackageReuseLevel;
+  description: string;
+  evidence: Evidence[];
+}
+
+/** One factor the AI judges to materially move a Work Package's effort up or down - explainability only, never a percentage formula (spec: "keine Prozentwerte notwendig"). */
+export interface EffortDriver {
+  type: string;
+  impact: EffortDriverImpact;
+  description: string;
+  evidence: Evidence[];
+}
+
+/**
+ * One concrete, independently estimable unit of work, as identified by the
+ * AI directly from the Requirement Impact Analysis (existing/reusable/
+ * modify/create/...) plus the repository (or, in GREENFIELD, the
+ * requirement/acceptance criteria/constraints/assumptions alone). Deliberately
+ * NOT microscopic and NOT the whole requirement in one package - see
+ * domain/effort.ts LARGE_WORK_PACKAGE_THRESHOLD_HOURS. This is the raw AI
+ * shape (see domain/schemas.ts EffortWorkPackageSchema) - see
+ * EffortWorkPackage for the app-normalized version with isLargeWorkPackage
+ * computed.
+ */
+export interface EffortWorkPackageInput {
+  id: string;
+  title: string;
+  category: EffortWorkPackageCategory;
+  description: string;
+  action: EffortWorkPackageAction;
+  affectedComponents: string[];
+  /** Empty in GREENFIELD mode - never a fabricated file path. */
+  repositoryEvidence: RepositoryEvidenceRef[];
+  /** ids of other Work Packages in this same breakdown this one depends on. Dependencies affect explainability/sequencing only - human hours are always summed regardless of dependencies (spec: personnel effort, not calendar/lead time). */
+  dependencies: string[];
+  reuse: WorkPackageReuse;
+  /** Human personal effort for this package alone - analysis, briefing/steering coding agents, review, corrections, integration, testing, deployment. Never coding-agent runtime/tokens/CPU time. */
+  humanEffort: HumanEffortCorridor;
+  confidence: number;
+  rationale: string;
+  assumptions: string[];
+  risks: string[];
+  effortDrivers: EffortDriver[];
+}
+
+/**
+ * The normalized (rounded, corridor-consistent) Work Package the application
+ * actually stores/displays - see scoring/effortEstimator.ts
+ * buildEffortEstimateFromWorkPackages. isLargeWorkPackage is computed here,
+ * never provided by the AI.
+ */
+export interface EffortWorkPackage extends EffortWorkPackageInput {
+  /** App-computed (not from the AI) - see domain/effort.ts LARGE_WORK_PACKAGE_THRESHOLD_HOURS. A signal to consider further decomposition, not an error. */
+  isLargeWorkPackage: boolean;
+}
+
+/**
+ * The second, self-check pass the AI performs on its own Work Package list
+ * before finalizing its response (spec section 22-23) - "did I miss a
+ * necessary package?" and "do any of these overlap/double-count the same
+ * work?". Both arrays are usually empty; a non-empty missingAreas does NOT
+ * mean the AI must retroactively add a package for every category, only
+ * that it judged something concretely missing.
+ */
+export interface EffortCompletenessAssessment {
+  complete: boolean;
+  missingAreas: string[];
+  overlapWarnings: string[];
+}
+
+/**
+ * Raw output of the effort work-breakdown portion of AIProvider.assessRequirement
+ * - see domain/schemas.ts EffortWorkBreakdownOutputSchema. Deliberately has
+ * NO total/overall-confidence field: the application computes those from
+ * workPackages alone (scoring/effortEstimator.ts
+ * buildEffortEstimateFromWorkPackages).
+ */
+export interface EffortWorkBreakdownOutput {
+  workPackages: EffortWorkPackageInput[];
+  completenessAssessment: EffortCompletenessAssessment;
+  /** In German - only genuinely material open questions (spec section 20-21 materiality gate); folded into ScoringResult.openQuestions by the caller, since the interactive Assumption/Clarification round has already closed by the time this call runs. Empty array is the common case. */
+  clarificationsRequired: string[];
+  generalAssumptions: string[];
+}
+
+/**
+ * The deterministically aggregated, explainable result of the bottom-up
+ * Work Breakdown - embedded in EffortEstimate.workBreakdown. Absent
+ * entirely on an EffortEstimate produced before this change (or, in
+ * principle, by any future non-bottom-up effort method) - see
+ * EffortEstimate.workBreakdown.
+ */
+export interface EffortWorkBreakdown {
+  /** Normalized (rounded, corridor-consistent) copies of the AI's Work Packages, each with isLargeWorkPackage computed. */
+  workPackages: EffortWorkPackage[];
+  completenessAssessment: EffortCompletenessAssessment;
+  clarificationsRequired: string[];
+  generalAssumptions: string[];
+  calculationMethod: "BOTTOM_UP_WORK_PACKAGE_AGGREGATION";
+  calculationModelVersion: "effort-bottom-up-v1";
+  /** Deterministic Sanity Check flags (spec section 45) - explainability signals only, never a hidden hour adjustment. */
+  flags: EffortSanityFlag[];
+}
+
 /**
  * AI_NATIVE's own human-effort estimate for this requirement, as a range
- * rather than a false-precision single number - see domain/schemas.ts
- * EffortEstimateSchema for the full contract on what this counts (human
- * analysis/briefing/review/correction/testing/deployment time, NOT "the AI
- * runs for N hours"). This is the Effort Model's (Model C) sole output, and
- * the baseline every other technology's estimatedHours is scaled from (see
- * scoring/technologyFitEngine.ts).
+ * rather than a false-precision single number. This is the Effort Model's
+ * (Model C) sole output, and the baseline every other technology's
+ * estimatedHours is scaled from (see scoring/technologyFitEngine.ts).
+ * minHours/likelyHours/maxHours/confidence/rationale are kept as a stable,
+ * backward-compatible top-level contract for every existing consumer
+ * (Technology Fit, Commercial Model, Pricing, the UI) regardless of how they
+ * were produced; `workBreakdown` is the new, optional bottom-up detail
+ * (absent on an estimate produced before this change, or if a future effort
+ * method other than bottom-up work-package aggregation is introduced).
  */
 export interface EffortEstimate {
   minHours: number;
@@ -271,6 +417,8 @@ export interface EffortEstimate {
   maxHours: number;
   confidence: number;
   rationale: LocalizedText;
+  /** Present only when this estimate came from bottom-up Work Package aggregation (effort-bottom-up-v1) - see scoring/effortEstimator.ts. */
+  workBreakdown?: EffortWorkBreakdown;
 }
 
 // ---------------------------------------------------------------------------
@@ -357,7 +505,8 @@ export interface RequirementAssessment {
   impactAnalysis: ImpactAnalysis;
   dimensions: DimensionScores;
   overallAssessment: LocalizedText;
-  effortEstimate: EffortEstimate;
+  /** Raw Work Packages - see scoring/effortEstimator.ts buildEffortEstimateFromWorkPackages for how this becomes the app's EffortEstimate. */
+  effortWorkBreakdown: EffortWorkBreakdownOutput;
   technologyProfile: TechnologyProfile;
   existingAssetLeverage: ExistingAssetLeverage[];
   technologyNarratives: TechnologyNarrative[];
@@ -873,6 +1022,8 @@ export interface EffortPredictionSnapshot {
   predictedEffortLikelyHours: number;
   predictedEffortMaxHours: number;
   predictedEffortConfidence: number | null;
+  /** Frozen copy of EffortEstimate.workBreakdown at prediction time - null for a legacy-v1/technology-fit-v2/commercial-du-v1/v2-pre-bottom-up estimate, or any future non-bottom-up effort method. Answers "why were N hours predicted back then?" long after a later re-score could otherwise overwrite it. */
+  effortWorkBreakdown: EffortWorkBreakdown | null;
   /** Which Base-DU-class effort benchmark this was compared against, and how it was calibrated at prediction time - see domain/commercial.ts BASE_DU_EFFORT_BENCHMARKS. */
   effortBenchmark: EffortBenchmarkInfo | null;
   /** The effort-specific line item from commercialCalculation.adjustments, frozen at prediction time. */

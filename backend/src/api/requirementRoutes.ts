@@ -102,7 +102,7 @@ requirementRouter.post("/score", asyncHandler(async (req, res) => {
     );
     const engineResult = computeDuResult({
       scores: assessment.dimensions,
-      effortEstimate: assessment.effortEstimate,
+      effortWorkBreakdown: assessment.effortWorkBreakdown,
       technologyProfile: assessment.technologyProfile,
       existingAssetLeverage: assessment.existingAssetLeverage,
       technologyNarratives: assessment.technologyNarratives,
@@ -137,7 +137,11 @@ requirementRouter.post("/score", asyncHandler(async (req, res) => {
 
     if (result.status === "NEEDS_CLARIFICATION") {
       result.duResult = null;
-      result.openQuestions = collectOpenQuestions(assessment.impactAnalysis, assessment.dimensions);
+      result.openQuestions = collectOpenQuestions(
+        assessment.impactAnalysis,
+        assessment.dimensions,
+        assessment.effortWorkBreakdown.clarificationsRequired,
+      );
     } else {
       result.duResult = engineResult;
     }
@@ -291,6 +295,7 @@ requirementRouter.post("/:id/actual-effort", asyncHandler(async (req, res) => {
           predictedEffortLikelyHours: du.effortEstimate.likelyHours,
           predictedEffortMaxHours: du.effortEstimate.maxHours,
           predictedEffortConfidence: du.effortEstimate.confidence,
+          effortWorkBreakdown: du.effortEstimate.workBreakdown ?? null,
           effortBenchmark: du.commercialCalculation?.effortAnalysis?.benchmark ?? null,
           effortAdjustment: commercialAdjustment("AI-native Aufwand vs. Effort Benchmark"),
           predictedTechnologyComparison: du.technologyComparison ?? [],
@@ -332,10 +337,14 @@ requirementRouter.get("/:id/actual-effort", asyncHandler(async (req, res) => {
   res.status(200).json(records);
 }));
 
-function collectOpenQuestions(impact: ImpactAnalysis, scores: ScoringResult["dimensionScores"]): string[] {
+function collectOpenQuestions(
+  impact: ImpactAnalysis,
+  scores: ScoringResult["dimensionScores"],
+  effortClarificationsRequired: string[] = [],
+): string[] {
   const fromImpact = impact.openQuestions;
   const fromDimensions = scores ? Object.values(scores).flatMap((s) => s.missingInformation) : [];
-  return Array.from(new Set([...fromImpact, ...fromDimensions]));
+  return Array.from(new Set([...fromImpact, ...fromDimensions, ...effortClarificationsRequired]));
 }
 
 function describeError(err: unknown): string {

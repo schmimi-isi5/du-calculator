@@ -4,6 +4,12 @@
 // validation instead of silently producing fabricated data.
 
 import { z } from "zod";
+import {
+  EFFORT_DRIVER_IMPACTS,
+  EFFORT_WORK_PACKAGE_ACTIONS,
+  EFFORT_WORK_PACKAGE_CATEGORIES,
+  WORK_PACKAGE_REUSE_LEVELS,
+} from "./effort.js";
 import { TECHNOLOGY_IDS, TECHNOLOGY_PROFILE_FACTORS } from "./technology.js";
 
 export const LocalizedTextSchema = z.object({
@@ -198,14 +204,13 @@ export const TechnologyNarrativeSchema = z.object({
 });
 
 /**
- * AI_NATIVE's own human-effort estimate for this requirement, as a range
- * instead of a falsely precise single number. Counts ONLY human time:
- * analysis, briefing/steering coding agents, review, corrections, manual/
- * individual development work, testing/QA, deployment/integration - never
- * "the AI works for N hours". This is the sole basis every other
- * technology's estimatedHours is scaled from (scoring/technologyFitEngine.ts) -
- * deliberately NOT derived from the DU dimension scores or any DU/hours
- * formula.
+ * @deprecated Superseded by EffortWorkBreakdownOutputSchema (bottom-up Work
+ * Package aggregation, effort-bottom-up-v1) - a single independent
+ * min/likely/max/confidence judgment for the WHOLE requirement was not
+ * explainable enough (no way to see what drove the number, verify it
+ * against the repository, or later calibrate which kinds of work the AI
+ * under/overestimates). No longer referenced by RequirementAssessmentSchema
+ * - kept only as documentation of the shape a pre-bottom-up assessment used.
  */
 export const EffortEstimateSchema = z.object({
   minHours: z.number().min(0).describe("Optimistic but plausible human-hours bound - not a floor with no basis."),
@@ -215,6 +220,104 @@ export const EffortEstimateSchema = z.object({
   rationale: LocalizedTextSchema.describe(
     "2-4 sentences per language explaining what drives the corridor width and the likely figure specifically - setup, integration points, testing, edge cases, unfamiliar vs. well-trodden parts of the codebase, comparable real-world work you're aware of. Must not just restate a dimension rationale - this is an independent estimation.",
   ),
+});
+
+// ---------------------------------------------------------------------------
+// Effort Model (C) - bottom-up Work Package estimation (effort-bottom-up-v1).
+// The AI identifies and estimates Work Packages only - it never states an
+// independent total; scoring/effortEstimator.ts aggregates
+// minHours/likelyHours/maxHours/confidence deterministically from these. See
+// domain/effort.ts for the category/action/reuse-level vocabularies.
+// ---------------------------------------------------------------------------
+
+const EffortWorkPackageCategorySchema = z.enum(EFFORT_WORK_PACKAGE_CATEGORIES);
+const EffortWorkPackageActionSchema = z.enum(EFFORT_WORK_PACKAGE_ACTIONS);
+const WorkPackageReuseLevelSchema = z.enum(WORK_PACKAGE_REUSE_LEVELS);
+const EffortDriverImpactSchema = z.enum(EFFORT_DRIVER_IMPACTS);
+
+const RepositoryEvidenceRefSchema = z.object({
+  path: z.string(),
+  symbol: z.string().nullable().describe("The concrete function/class/component name if known, otherwise null - do not guess one."),
+  status: EvidenceStatusSchema,
+});
+
+const WorkPackageReuseSchema = z.object({
+  level: WorkPackageReuseLevelSchema,
+  description: z
+    .string()
+    .describe("In German - grounded in the cited evidence, e.g. why this can nearly reuse an existing service vs. why nothing reusable exists."),
+  evidence: z.array(EvidenceSchema),
+});
+
+const HumanEffortCorridorSchema = z.object({
+  minHours: z.number().min(0),
+  likelyHours: z.number().min(0),
+  maxHours: z.number().min(0),
+});
+
+const EffortDriverSchema = z.object({
+  type: z
+    .string()
+    .describe(
+      'Short label for what drives this Work Package\'s effort, e.g. "existing code reuse", "unfamiliar integration", "data migration", "AI/RAG complexity", "authorization", "UI complexity", "uncertain API", "legacy code".',
+    ),
+  impact: EffortDriverImpactSchema,
+  description: z.string().describe("In German."),
+  evidence: z.array(EvidenceSchema),
+});
+
+export const EffortWorkPackageSchema = z.object({
+  id: z.string().describe('Short, stable id unique within this breakdown, e.g. "wp-001".'),
+  title: z.string().describe("Short title, in German."),
+  category: EffortWorkPackageCategorySchema,
+  description: z.string().describe("In German - what this Work Package concretely covers, specific enough to review and later verify against what was actually built."),
+  action: EffortWorkPackageActionSchema,
+  affectedComponents: z.array(z.string()).describe("Names of affected components/services/modules, in German where descriptive text is needed."),
+  repositoryEvidence: z
+    .array(RepositoryEvidenceRefSchema)
+    .describe("EXISTING_SYSTEM mode: cite real files/symbols this Work Package touches or extends. GREENFIELD mode: always empty array - never invent a path."),
+  dependencies: z.array(z.string()).describe("ids of other Work Packages in THIS SAME breakdown that this one depends on, if any."),
+  reuse: WorkPackageReuseSchema,
+  humanEffort: HumanEffortCorridorSchema.describe(
+    "Human personal effort for THIS package alone (analysis, briefing/steering coding agents, review, corrections, integration, testing, deployment) - never coding-agent runtime/tokens/CPU time. minHours <= likelyHours <= maxHours. Prefer whole or half hours (2h, 4.5h, 7h) over false minute-level precision (2.37h).",
+  ),
+  confidence: z.number().min(0).max(1),
+  rationale: z.string().describe("In German - why this specific effort corridor for this specific Work Package, grounded in the evidence/reuse/drivers above."),
+  assumptions: z.array(z.string()).describe("In German - only assumptions this specific Work Package's estimate relies on."),
+  risks: z.array(z.string()).describe("In German."),
+  effortDrivers: z.array(EffortDriverSchema),
+});
+
+export const EffortCompletenessAssessmentSchema = z.object({
+  complete: z.boolean(),
+  missingAreas: z
+    .array(z.string())
+    .describe("In German - concrete necessary work you judge is NOT yet covered by any Work Package above. Empty array is the common, expected case - do not invent a gap just to fill this."),
+  overlapWarnings: z
+    .array(z.string())
+    .describe("In German - name any two Work Packages above that describe overlapping/double-counted work, if you find any. Empty array is the common case."),
+});
+
+/**
+ * The Effort Model's actual AI output - Work Packages plus a mandatory
+ * second self-check pass (completenessAssessment) performed in this same
+ * response, not a separate call. Deliberately has NO total/overall-
+ * confidence field anywhere in this schema - the application always
+ * computes those from workPackages alone (spec: "Die KI soll NICHT
+ * zusätzlich einen unabhängigen Gesamtaufwand erfinden").
+ */
+export const EffortWorkBreakdownOutputSchema = z.object({
+  workPackages: z
+    .array(EffortWorkPackageSchema)
+    .min(1)
+    .describe("Concrete, MECE-oriented Work Packages covering this requirement's full scope - typically 1-16 likely human hours each, neither microscopic nor 'implement the whole requirement' in one package."),
+  completenessAssessment: EffortCompletenessAssessmentSchema,
+  clarificationsRequired: z
+    .array(z.string())
+    .describe(
+      "In German - ONLY genuinely material open questions per the materiality rule (would add/remove a Work Package, flip CREATE to MODIFY, materially change a large package, or materially shift the total). Empty array is the common case - most gaps should be resolved via evidence or a stated assumption instead, not listed here.",
+    ),
+  generalAssumptions: z.array(z.string()).describe("In German - assumptions that apply across multiple Work Packages, not already captured on an individual package."),
 });
 
 // ---------------------------------------------------------------------------
@@ -291,7 +394,7 @@ export const RequirementAssessmentSchema = z.object({
   overallAssessment: LocalizedTextSchema.describe(
     "2-4 sentences per language characterizing the overall scope, complexity, and risk across all eight dimensions together.",
   ),
-  effortEstimate: EffortEstimateSchema,
+  effortWorkBreakdown: EffortWorkBreakdownOutputSchema,
   technologyProfile: TechnologyProfileSchema,
   existingAssetLeverage: z
     .array(ExistingAssetLeverageSchema)

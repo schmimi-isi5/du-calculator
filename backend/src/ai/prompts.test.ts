@@ -62,4 +62,17 @@ describe("buildAssessmentPrompt - GREENFIELD mode", () => {
     expect(prompt.system).toContain("Implementation novelty (implementationNovelty)");
     expect(prompt.system).toContain("Reusable innovation / IP (reusableInnovationIp)");
   });
+
+  it("instructs the AI to produce bottom-up Work Packages, never an independent total", () => {
+    const prompt = buildAssessmentPrompt(REQUIREMENT, PROFILE, CONTEXT, knowledge, "standard");
+    expect(prompt.system).toContain("effortWorkBreakdown");
+    expect(prompt.system).toContain("Work Packages");
+    expect(prompt.system).toContain("Do NOT give one holistic total for the requirement");
+    expect(prompt.system).not.toContain("Independent AI-native effort estimate");
+  });
+
+  it("tells GREENFIELD Work Packages to have empty repositoryEvidence", () => {
+    const greenfield = buildAssessmentPrompt(REQUIREMENT, PROFILE, CONTEXT, knowledge, "standard", "GREENFIELD");
+    expect(greenfield.system).toContain("Every Work Package's repositoryEvidence must be an empty array");
+  });
 });
