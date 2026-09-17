@@ -4,12 +4,15 @@
 // (Development Unit / DU) while keeping identifiers in English, matching
 // the rest of the codebase.
 //
-// Four models are kept strictly separate and must never be conflated:
-//   A) DU Model       - scope/complexity/risk of the deliverable (duEngine.ts)
-//   B) Technology Fit  - how well AI_NATIVE/N8N/INTREXX fit THIS requirement's
-//                        technical shape (domain/technology.ts, scoring/technologyFitEngine.ts)
-//   C) Effort Model    - AI_NATIVE's own human-effort corridor (scoring/effortEstimator.ts)
-//   D) Pricing Model   - commercial price, decoupled from production effort (scoring/pricingEngine.ts)
+// Five models are kept strictly separate and must never be conflated:
+//   A) DU Model         - Base DU: scope/complexity/risk of the deliverable (duEngine.ts)
+//   B) Technology Fit    - how well AI_NATIVE/CLASSIC/N8N/INTREXX fit THIS requirement's
+//                          technical shape (domain/technology.ts, scoring/technologyFitEngine.ts)
+//   C) Effort Model      - AI_NATIVE's own human-effort corridor (scoring/effortEstimator.ts)
+//   D) Commercial Model  - Commercial DU: Base DU adjusted for effort/direct costs/
+//                          innovation/risk, NOT a time conversion (domain/commercial.ts,
+//                          scoring/commercialEngine.ts)
+//   E) Pricing Model     - commercial price, decoupled from production effort (scoring/pricingEngine.ts)
 
 import type { TechnologyId, TechnologyKey, TechnologyProfileFactor } from "./technology.js";
 
@@ -67,15 +70,32 @@ export interface RepositoryProfile {
 }
 
 /**
- * Result of cloning and reading a real repository. Only ever set to
- * SNAPSHOT_CREATED once the clone, file listing, and repository profile
- * have all actually succeeded.
+ * EXISTING_SYSTEM (default) means a real repository was cloned and analyzed
+ * - the repository is the central evidence source. GREENFIELD means no
+ * repository exists yet; the assessment is based on the requirement,
+ * acceptance criteria, constraints, and target architecture the customer
+ * describes instead. A missing repository must never be treated as an
+ * error - see api/repositoryRoutes.ts POST /greenfield, which creates a
+ * RepositorySnapshot with mode: "GREENFIELD" and a synthetic profile
+ * instead of skipping the snapshot mechanism entirely - this reuses every
+ * existing snapshot-keyed code path (RequirementContext, ScoringResult,
+ * history) without a parallel "no repository" flow.
+ */
+export type RepositorySnapshotMode = "EXISTING_SYSTEM" | "GREENFIELD";
+
+/**
+ * Result of cloning and reading a real repository (EXISTING_SYSTEM), or a
+ * synthetic placeholder for a requirement with no repository yet
+ * (GREENFIELD). Only ever set to SNAPSHOT_CREATED once the clone (if any),
+ * file listing, and repository profile have all actually succeeded.
  */
 export interface RepositorySnapshot {
   id: string;
   repositoryUrl: string;
   branch: string;
   status: RepositoryStatus;
+  /** Absent on old rows - treat as "EXISTING_SYSTEM" (see toSnapshot in PostgresScoringStore.ts). */
+  mode?: RepositorySnapshotMode;
   commitSha: string | null;
   analyzedAt: string | null;
   fileTree: string[];
@@ -93,6 +113,7 @@ export interface RepositorySnapshotSummary {
   repositoryUrl: string;
   branch: string;
   status: RepositoryStatus;
+  mode?: RepositorySnapshotMode;
   commitSha: string | null;
   analyzedAt: string | null;
   profileSummary: string | null;
@@ -252,6 +273,53 @@ export interface EffortEstimate {
   rationale: LocalizedText;
 }
 
+// ---------------------------------------------------------------------------
+// Commercial Model (D) inputs - see domain/commercial.ts for the calculation
+// constants and scoring/commercialEngine.ts for how these combine with Base
+// DU and the Effort Model into a suggested Commercial DU. The AI provides
+// these as evidence-grounded assessments; it never states a Commercial DU
+// number itself.
+// ---------------------------------------------------------------------------
+
+export type DirectCostType = "ONE_TIME_DEVELOPMENT" | "RECURRING_RUNTIME" | "BOTH";
+export type DirectCostStatus = "ESTIMATED" | "UNKNOWN" | "ESTIMATE_REQUIRED";
+
+/**
+ * One category of direct cost (AI/API, infrastructure, third-party, other).
+ * amount is null whenever status is not ESTIMATED - never invent a number
+ * to fill the gap. ONE_TIME_DEVELOPMENT costs may feed the Commercial
+ * Model; RECURRING_RUNTIME costs never do (they are the customer-facing
+ * "laufende Kosten" disclosure instead - see ManagementReport.tsx).
+ */
+export interface DirectCostItem {
+  amountEur: number | null;
+  costType: DirectCostType;
+  status: DirectCostStatus;
+  rationale: string;
+}
+
+export interface DirectCostEstimate {
+  aiApiCost: DirectCostItem;
+  infrastructureCost: DirectCostItem;
+  thirdPartyCost: DirectCostItem;
+  otherDirectCost: DirectCostItem;
+}
+
+export type InnovationLevel = "LOW" | "MEDIUM" | "HIGH";
+
+/**
+ * Whether this requirement genuinely requires new technical solutions,
+ * experimentation, or produces reusable new ISIFIVE IP - NOT a proxy for
+ * "uses AI = expensive". See ai/prompts.ts INNOVATION_RULE. May influence
+ * Commercial DU; must never retroactively change a Base DU dimension score.
+ */
+export interface InnovationAssessment {
+  level: InnovationLevel;
+  rationale: string;
+  evidence: Evidence[];
+  confidence: number;
+}
+
 /** Impact analysis and scoring produced together in one AI call - see AIProvider.assessRequirement. */
 export interface RequirementAssessment {
   impactAnalysis: ImpactAnalysis;
@@ -261,6 +329,8 @@ export interface RequirementAssessment {
   technologyProfile: TechnologyProfile;
   existingAssetLeverage: ExistingAssetLeverage[];
   technologyNarratives: TechnologyNarrative[];
+  directCosts: DirectCostEstimate;
+  innovation: InnovationAssessment;
 }
 
 export type DuClass = "XS" | "S" | "M" | "L" | "XL" | "XXL";
@@ -304,6 +374,33 @@ export interface AlternativeApproachEstimate {
 /** How the commercial price is derived - see scoring/pricingEngine.ts. Independent of which technology the comparison favors; always priced against ISIFIVE's own AI-native delivery. */
 export type PricingStrategy = "HOURLY" | "DU_FIXED_PRICE";
 
+export type CalibrationStatus = "INITIAL_HYPOTHESIS" | "EXPERT_CALIBRATED" | "EMPIRICALLY_CALIBRATED" | "DATA_DRIVEN";
+
+/** One named adjustment CommercialEngine applied to Base DU - see scoring/commercialEngine.ts. Always present, even when its deltaDU is 0, so the UI can show "this factor was considered, no adjustment was warranted" rather than silently omitting it. */
+export interface CommercialAdjustment {
+  label: string;
+  deltaDU: number;
+  reason: string;
+}
+
+/**
+ * Output of the Commercial Model (D) - see scoring/commercialEngine.ts.
+ * suggestedCommercialDU is null whenever baseDU is null (XXL - no Base DU to
+ * adjust from). Deliberately NOT a time conversion: hours are one signal
+ * among several (direct costs, innovation, risk), each dampened and
+ * capped - never `hours / constant`.
+ */
+export interface CommercialCalculation {
+  baseDU: number | null;
+  suggestedCommercialDU: number | null;
+  commercialDUConfidence: number;
+  /** suggestedCommercialDU × the configured price-per-DU, shown as a preview regardless of the currently active PricingStrategy (spec: "nur anzeigen, wenn konfiguriert/gewünscht" - the caller decides whether to surface it). */
+  targetCommercialValue: number | null;
+  rationale: string;
+  adjustments: CommercialAdjustment[];
+  calibrationStatus: CalibrationStatus;
+}
+
 /**
  * One row of the technology comparison - AI_NATIVE (pinned to
  * relativeEffortFactor 1.0, the reference every other row is scaled
@@ -343,14 +440,32 @@ export interface TechnologyAssessment {
   evidence: Evidence[];
   /** Short, deterministically generated explanation naming the requirement characteristics that drove this technology's fit - not free-form AI prose, so it stays traceable to the actual computation. */
   rationale: string;
+  /** Per-factor breakdown of what drove this technology's fit - "why is n8n at 162%?" (spec: explainability). Signed: positive = reduces this technology's effort relative to a neutral requirement, negative = increases it. Sorted by absolute magnitude, largest first. */
+  contributions: TechnologyFactorContribution[];
+  /** Set when relativeEffortFactor falls outside [HIGH_VARIANCE_LOWER_THRESHOLD, HIGH_VARIANCE_UPPER_THRESHOLD] (domain/technology.ts) - a signal to double-check the drivers, NOT an error and NOT the same as the technical guardrail clamp. */
+  varianceFlag: "HIGH_VARIANCE_COMPARISON" | null;
+}
+
+export interface TechnologyFactorContribution {
+  factor: TechnologyProfileFactor;
+  label: string;
+  /** Signed contribution to this technology's raw effort score - see TechnologyAssessment.contributions. */
+  contribution: number;
+  direction: "increases" | "decreases";
 }
 
 export interface DuResult {
   weightedScore: number;
   duClass: DuClass;
-  /** null for XXL - no artificially precise extrapolated count is produced; decomposition into smaller, separately estimable requirements is recommended instead (see determineScoringStatus). */
+  /**
+   * Base DU - null for XXL, no artificially precise extrapolated count is
+   * produced; decomposition into smaller, separately estimable requirements
+   * is recommended instead (see determineScoringStatus). NOT the same as
+   * the commercial unit offered to the customer - see
+   * commercialDevelopmentUnits.
+   */
   developmentUnits: number | null;
-  price: number | null; // null when no price is computable under pricingStrategy (e.g. DU_FIXED_PRICE with developmentUnits null) or no price configured
+  price: number | null; // null when no price is computable under pricingStrategy (e.g. DU_FIXED_PRICE with commercialDevelopmentUnits null) or no price configured
   pricingStrategy: PricingStrategy;
   overallConfidence: number;
   confidenceLevel: "HIGH" | "MEDIUM" | "LOW";
@@ -359,8 +474,20 @@ export interface DuResult {
   /** Absent (legacy-v1) for a DuResult computed before this change - see calculationModelVersion. */
   effortEstimate?: EffortEstimate;
   technologyComparison?: TechnologyAssessment[];
-  /** Absent means this DuResult was computed by the pre-technology-fit engine ("legacy-v1") - only timeEstimate/alternativeApproaches are populated in that case, never effortEstimate/technologyComparison. */
-  calculationModelVersion?: "technology-fit-v2";
+  directCosts?: DirectCostEstimate;
+  innovation?: InnovationAssessment;
+  /** The Commercial Model's (D) output - see scoring/commercialEngine.ts. Present only for calculationModelVersion "commercial-du-v1". */
+  commercialCalculation?: CommercialCalculation;
+  /** Convenience mirror of commercialCalculation.suggestedCommercialDU, so callers that only need the number don't have to reach into the calculation object - see scoring/pricingEngine.ts, which uses exactly this field for DU_FIXED_PRICE. */
+  commercialDevelopmentUnits?: number | null;
+  /**
+   * Absent means this DuResult was computed by the original pre-technology-fit
+   * engine ("legacy-v1") - only timeEstimate/alternativeApproaches are
+   * populated in that case. "technology-fit-v2" has effortEstimate/
+   * technologyComparison but no Commercial Model fields.
+   * "commercial-du-v1" (current) has all of the above.
+   */
+  calculationModelVersion?: "technology-fit-v2" | "commercial-du-v1";
   /** @deprecated legacy-v1 only - see TimeEstimate. */
   timeEstimate?: TimeEstimate;
   /** @deprecated legacy-v1 only - see AlternativeApproachEstimate. */
@@ -572,13 +699,44 @@ export interface RequirementContext {
 // ---------------------------------------------------------------------------
 
 /** One real outcome recorded against a past ScoringResult - see store/ActualEffortStore.ts. */
+/**
+ * A denormalized copy of the key predicted figures from the ScoringResult
+ * at the moment an actual outcome is recorded - not a live reference. A
+ * ScoringResult can later be re-scored (its du_result JSONB overwritten),
+ * which would otherwise silently corrupt the historical prediction-vs-actual
+ * pairing this record exists to preserve (spec: "Prediction Snapshot
+ * Immutable"). Absolute/percentage error, bias, and corridor hit/miss can
+ * later be computed from predicted* vs. actual* - no such computation is
+ * implemented yet, this is data collection only.
+ */
+export interface EffortPredictionSnapshot {
+  calculationModelVersion: string | null;
+  predictedBaseDU: number | null;
+  predictedCommercialDU: number | null;
+  predictedEffortMinHours: number;
+  predictedEffortLikelyHours: number;
+  predictedEffortMaxHours: number;
+  predictedTechnologyComparison: TechnologyAssessment[];
+  directCostsPredicted: DirectCostEstimate | null;
+  pricingStrategy: PricingStrategy;
+  offeredPrice: number | null;
+  innovationLevel: InnovationLevel | null;
+}
+
 export interface ActualEffortRecord {
   id: string;
   scoringId: string;
   actualHumanHours: number;
   /** Which production method was actually used to deliver this. */
   actualImplementationMethod: TechnologyKey;
-  /** Free-text note on rework/bugfix/acceptance-iteration effort not captured by actualHumanHours alone, if any. */
+  /** Immutable copy of what was predicted at the time this actual was recorded - see EffortPredictionSnapshot. Null for records created before this field existed. */
+  predictionSnapshot: EffortPredictionSnapshot | null;
+  directCostsActual: DirectCostEstimate | null;
+  reworkHours: number | null;
+  bugfixHours: number | null;
+  acceptanceIterations: number | null;
+  scopeChanged: boolean | null;
+  /** Free-text note on rework/bugfix/acceptance-iteration effort not captured by the structured fields above, if any. */
   notes: string | null;
   recordedAt: string;
 }

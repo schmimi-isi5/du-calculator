@@ -29,9 +29,9 @@ describe("buildTechnologyComparison - mechanics", () => {
     expect(aiNative.estimatedHours).toEqual(AI_NATIVE_EFFORT);
   });
 
-  it("returns exactly the three base technologies plus the one supported combination", () => {
+  it("returns exactly the four base technologies plus the one supported combination", () => {
     const rows = buildTechnologyComparison(buildTechnologyProfile(), buildExistingAssetLeverage(), buildTechnologyNarratives(), AI_NATIVE_EFFORT);
-    expect(rows.map((r) => r.technology)).toEqual(["AI_NATIVE", "N8N", "INTREXX", "N8N_INTREXX"]);
+    expect(rows.map((r) => r.technology)).toEqual(["AI_NATIVE", "CLASSIC", "N8N", "INTREXX", "N8N_INTREXX"]);
   });
 
   it("keeps assetLeverage as null (UNKNOWN) rather than defaulting it to 0 when no evidence was given", () => {
@@ -248,5 +248,102 @@ describe("Test G - poor platform fit (complex state machine + custom algorithm +
     const rows = buildTechnologyComparison(profile, buildExistingAssetLeverage(), buildTechnologyNarratives(), AI_NATIVE_EFFORT);
     const n8n = findRow(rows, "N8N");
     expect(n8n.relativeEffortFactor).toBeGreaterThan(1);
+  });
+});
+
+// --- commercial-du-v1 spec: CLASSIC_CUSTOM_DEVELOPMENT --------------------
+// CLASSIC runs through the exact same symmetric formula as every other
+// technology - these tests verify it is not hardcoded to "always worse than
+// AI_NATIVE" (it can still clearly beat n8n/Intrexx on custom-logic-heavy
+// requirements) nor "always better than n8n/Intrexx" (it can lose to n8n on
+// boilerplate-heavy standard automation).
+
+describe("Test D (commercial-du-v1) - CLASSIC on a custom-algorithm-heavy requirement", () => {
+  it("lets CLASSIC lose to AI_NATIVE but still clearly beat both n8n and Intrexx", () => {
+    const profile = buildTechnologyProfile({
+      customAlgorithms: { score: 5 },
+      customBusinessLogic: { score: 3 },
+      standardConnectors: { score: 0 },
+      workflowOrchestration: { score: 0 },
+      uiForms: { score: 0 },
+      crudDataManagement: { score: 0 },
+    });
+    const rows = buildTechnologyComparison(profile, buildExistingAssetLeverage(), buildTechnologyNarratives(), AI_NATIVE_EFFORT);
+    const aiNative = findRow(rows, "AI_NATIVE");
+    const classic = findRow(rows, "CLASSIC");
+    const n8n = findRow(rows, "N8N");
+    const intrexx = findRow(rows, "INTREXX");
+
+    expect(classic.relativeEffortFactor).toBeGreaterThan(aiNative.relativeEffortFactor);
+    expect(classic.relativeEffortFactor).toBeLessThan(n8n.relativeEffortFactor);
+    expect(classic.relativeEffortFactor).toBeLessThan(intrexx.relativeEffortFactor);
+  });
+});
+
+describe("CLASSIC on a standard-automation requirement", () => {
+  it("lets CLASSIC lose to n8n - it is not automatically better than a low-code platform either", () => {
+    const profile = buildTechnologyProfile({
+      workflowOrchestration: { score: 5 },
+      standardConnectors: { score: 5 },
+      customIntegrations: { score: 1 },
+      customBusinessLogic: { score: 0 },
+      uiForms: { score: 0 },
+      crudDataManagement: { score: 1 },
+    });
+    const rows = buildTechnologyComparison(profile, buildExistingAssetLeverage(), buildTechnologyNarratives(), AI_NATIVE_EFFORT);
+    const classic = findRow(rows, "CLASSIC");
+    const n8n = findRow(rows, "N8N");
+    expect(classic.relativeEffortFactor).toBeGreaterThan(n8n.relativeEffortFactor);
+  });
+});
+
+// --- commercial-du-v1 spec section 31: explainability ---------------------
+
+describe("TechnologyAssessment.contributions (explainability)", () => {
+  it("names the driving factors with a signed contribution and a direction consistent with its sign", () => {
+    const profile = buildTechnologyProfile({ workflowOrchestration: { score: 5 }, standardConnectors: { score: 5 } });
+    const rows = buildTechnologyComparison(profile, buildExistingAssetLeverage(), buildTechnologyNarratives(), AI_NATIVE_EFFORT);
+    const n8n = findRow(rows, "N8N");
+
+    expect(n8n.contributions.length).toBeGreaterThan(0);
+    for (const c of n8n.contributions) {
+      expect(c.direction).toBe(c.contribution >= 0 ? "decreases" : "increases");
+    }
+    // Sorted by absolute magnitude, largest first.
+    for (let i = 1; i < n8n.contributions.length; i++) {
+      expect(Math.abs(n8n.contributions[i - 1]!.contribution)).toBeGreaterThanOrEqual(Math.abs(n8n.contributions[i]!.contribution));
+    }
+  });
+});
+
+// --- commercial-du-v1 spec section 32: HIGH_VARIANCE_COMPARISON -----------
+
+describe("TechnologyAssessment.varianceFlag", () => {
+  it("flags a technology whose relativeEffortFactor lands far from AI_NATIVE as HIGH_VARIANCE_COMPARISON, without treating it as an error", () => {
+    const profile = buildTechnologyProfile({
+      complexStateManagement: { score: 5 },
+      customAlgorithms: { score: 5 },
+      aiAgentsRag: { score: 5 },
+      workflowOrchestration: { score: 0 },
+      standardConnectors: { score: 0 },
+    });
+    const rows = buildTechnologyComparison(profile, buildExistingAssetLeverage(), buildTechnologyNarratives(), AI_NATIVE_EFFORT);
+    const n8n = findRow(rows, "N8N");
+    expect(n8n.relativeEffortFactor).toBeGreaterThan(2.0);
+    expect(n8n.varianceFlag).toBe("HIGH_VARIANCE_COMPARISON");
+  });
+
+  it("never flags AI_NATIVE itself (always exactly at its own 1.0 reference)", () => {
+    const rows = buildTechnologyComparison(buildTechnologyProfile({ customAlgorithms: { score: 5 } }), buildExistingAssetLeverage(), buildTechnologyNarratives(), AI_NATIVE_EFFORT);
+    expect(findRow(rows, "AI_NATIVE").varianceFlag).toBeNull();
+  });
+
+  it("leaves varianceFlag null for a technology comparison close to AI_NATIVE", () => {
+    const rows = buildTechnologyComparison(buildTechnologyProfile(), buildExistingAssetLeverage(), buildTechnologyNarratives(), AI_NATIVE_EFFORT);
+    // A perfectly neutral profile (every factor score 0) makes every
+    // technology's capabilityEffect 0, so every relativeEffortFactor is 1.
+    for (const row of rows) {
+      expect(row.varianceFlag).toBeNull();
+    }
   });
 });

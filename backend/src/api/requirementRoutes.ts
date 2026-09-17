@@ -97,6 +97,7 @@ requirementRouter.post("/score", asyncHandler(async (req, res) => {
       requirementContext.qualityLevel,
       requirementContext.model,
       usageContext,
+      snapshot.mode,
     );
     const engineResult = computeDuResult({
       scores: assessment.dimensions,
@@ -104,6 +105,8 @@ requirementRouter.post("/score", asyncHandler(async (req, res) => {
       technologyProfile: assessment.technologyProfile,
       existingAssetLeverage: assessment.existingAssetLeverage,
       technologyNarratives: assessment.technologyNarratives,
+      directCosts: assessment.directCosts,
+      innovation: assessment.innovation,
       pricingStrategy: config.pricingStrategy,
       pricingConfig: { billingRatePerHour: config.billingRatePerHour, pricePerDU: config.pricePerDU },
     });
@@ -174,11 +177,19 @@ requirementRouter.get("/:id", asyncHandler(async (req, res) => {
   res.status(200).json(result);
 }));
 
-// Calibration data collection (technology-fit-v2 spec section 19) - records
-// what actually happened for a delivered requirement, so today's
-// TechnologyCapabilityProfile hypotheses (domain/technology.ts) can later be
-// recalibrated against real outcomes. No self-learning reads from this yet.
-const ACTUAL_IMPLEMENTATION_METHODS = ["AI_NATIVE", "N8N", "INTREXX", "N8N_INTREXX"] as const;
+// Calibration data collection (commercial-du-v1 spec sections 19, 28-29) -
+// records what actually happened for a delivered requirement, together with
+// an immutable snapshot of what was predicted at that moment, so today's
+// CapabilityProfile/Commercial hypotheses (domain/technology.ts,
+// domain/commercial.ts) can later be recalibrated against real outcomes. No
+// self-learning reads from this yet.
+const ACTUAL_IMPLEMENTATION_METHODS = ["AI_NATIVE", "CLASSIC", "N8N", "INTREXX", "N8N_INTREXX"] as const;
+
+function optionalNonNegativeNumber(value: unknown): number | null | undefined {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return undefined;
+  return value;
+}
 
 requirementRouter.post("/:id/actual-effort", asyncHandler(async (req, res) => {
   const id = req.params.id;
@@ -192,7 +203,16 @@ requirementRouter.post("/:id/actual-effort", asyncHandler(async (req, res) => {
     return;
   }
 
-  const { actualHumanHours, actualImplementationMethod, notes } = req.body ?? {};
+  const {
+    actualHumanHours,
+    actualImplementationMethod,
+    notes,
+    reworkHours: reworkHoursInput,
+    bugfixHours: bugfixHoursInput,
+    acceptanceIterations,
+    scopeChanged,
+  } = req.body ?? {};
+
   if (typeof actualHumanHours !== "number" || !Number.isFinite(actualHumanHours) || actualHumanHours < 0) {
     res.status(400).json({ error: "actualHumanHours must be a non-negative number." });
     return;
@@ -205,11 +225,56 @@ requirementRouter.post("/:id/actual-effort", asyncHandler(async (req, res) => {
     res.status(400).json({ error: "notes must be a string if provided." });
     return;
   }
+  const reworkHours = optionalNonNegativeNumber(reworkHoursInput);
+  const bugfixHours = optionalNonNegativeNumber(bugfixHoursInput);
+  if (reworkHours === undefined || bugfixHours === undefined) {
+    res.status(400).json({ error: "reworkHours/bugfixHours must be non-negative numbers if provided." });
+    return;
+  }
+  if (
+    acceptanceIterations !== undefined &&
+    acceptanceIterations !== null &&
+    (typeof acceptanceIterations !== "number" || !Number.isInteger(acceptanceIterations) || acceptanceIterations < 0)
+  ) {
+    res.status(400).json({ error: "acceptanceIterations must be a non-negative integer if provided." });
+    return;
+  }
+  if (scopeChanged !== undefined && scopeChanged !== null && typeof scopeChanged !== "boolean") {
+    res.status(400).json({ error: "scopeChanged must be a boolean if provided." });
+    return;
+  }
+
+  // Immutable prediction snapshot (spec: "Prediction Snapshot Immutable") -
+  // taken from the du_result as it stands right now, since a later re-score
+  // would otherwise overwrite it in place.
+  const du = result.duResult;
+  const predictionSnapshot =
+    du && du.effortEstimate
+      ? {
+          calculationModelVersion: du.calculationModelVersion ?? null,
+          predictedBaseDU: du.developmentUnits,
+          predictedCommercialDU: du.commercialDevelopmentUnits ?? null,
+          predictedEffortMinHours: du.effortEstimate.minHours,
+          predictedEffortLikelyHours: du.effortEstimate.likelyHours,
+          predictedEffortMaxHours: du.effortEstimate.maxHours,
+          predictedTechnologyComparison: du.technologyComparison ?? [],
+          directCostsPredicted: du.directCosts ?? null,
+          pricingStrategy: du.pricingStrategy,
+          offeredPrice: du.price,
+          innovationLevel: du.innovation?.level ?? null,
+        }
+      : null;
 
   const record = await recordActualEffort({
     scoringId: id,
     actualHumanHours,
     actualImplementationMethod,
+    predictionSnapshot,
+    directCostsActual: null,
+    reworkHours,
+    bugfixHours,
+    acceptanceIterations: acceptanceIterations ?? null,
+    scopeChanged: scopeChanged ?? null,
     notes: notes ?? null,
   });
   res.status(201).json(record);

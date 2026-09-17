@@ -12,8 +12,11 @@ import {
 } from "./duEngine.js";
 import {
   buildDimensionScores,
+  buildDirectCostEstimate,
   buildEffortEstimate,
+  buildEstimatedCostItem,
   buildExistingAssetLeverage,
+  buildInnovationAssessment,
   buildTechnologyNarratives,
   buildTechnologyProfile,
 } from "./testFixtures.js";
@@ -24,10 +27,15 @@ const PRICE_PER_DU = 900;
 function buildInput(overrides: Partial<ComputeDuResultInput> = {}): ComputeDuResultInput {
   return {
     scores: buildDimensionScores(Object.fromEntries(DIMENSION_KEYS.map((k) => [k, { score: 3, confidence: 0.9 }])) as never),
-    effortEstimate: buildEffortEstimate(24, 30, 40),
+    // Matches the COMMERCIAL_REFERENCE_HOURS_PER_DU (6h/DU) reference for a 6-DU
+    // requirement (36h) by default, so most tests below get commercialDU ==
+    // baseDU unless they deliberately vary effort/cost/innovation.
+    effortEstimate: buildEffortEstimate(30, 36, 42),
     technologyProfile: buildTechnologyProfile(),
     existingAssetLeverage: buildExistingAssetLeverage(),
     technologyNarratives: buildTechnologyNarratives(),
+    directCosts: buildDirectCostEstimate(),
+    innovation: buildInnovationAssessment("LOW"),
     pricingStrategy: "HOURLY",
     pricingConfig: { billingRatePerHour: BILLING_RATE_PER_HOUR, pricePerDU: PRICE_PER_DU },
     ...overrides,
@@ -158,7 +166,7 @@ describe("computeDuResult", () => {
     expect(result.overallConfidence).toBe(0.9);
     expect(result.confidenceLevel).toBe("HIGH");
     expect(result.isRoughEstimate).toBe(false);
-    expect(result.calculationModelVersion).toBe("technology-fit-v2");
+    expect(result.calculationModelVersion).toBe("commercial-du-v1");
   });
 
   it("gives XXL results a null development unit count and price under DU_FIXED_PRICE, but still a usable effort/price under HOURLY", () => {
@@ -208,18 +216,42 @@ describe("computeDuResult", () => {
     const result = computeDuResult(buildInput());
 
     const technologies = result.technologyComparison!.map((a) => a.technology);
-    expect(technologies).toEqual(["AI_NATIVE", "N8N", "INTREXX", "N8N_INTREXX"]);
+    expect(technologies).toEqual(["AI_NATIVE", "CLASSIC", "N8N", "INTREXX", "N8N_INTREXX"]);
     const aiNative = result.technologyComparison!.find((a) => a.technology === "AI_NATIVE")!;
     expect(aiNative.relativeEffortFactor).toBe(1);
   });
 
-  it("computes DU_FIXED_PRICE as developmentUnits * pricePerDU, independent of hours", () => {
+  it("attaches a commercialCalculation with an INITIAL_HYPOTHESIS calibration status and a null Commercial DU for XXL", () => {
+    const result = computeDuResult(buildInput());
+    expect(result.commercialCalculation!.calibrationStatus).toBe("INITIAL_HYPOTHESIS");
+    expect(result.commercialCalculation!.baseDU).toBe(6);
+    expect(result.commercialDevelopmentUnits).toBe(result.commercialCalculation!.suggestedCommercialDU);
+
+    const xxlResult = computeDuResult(
+      buildInput({
+        scores: buildDimensionScores(Object.fromEntries(DIMENSION_KEYS.map((k) => [k, { score: 5, confidence: 0.9 }])) as never),
+      }),
+    );
+    expect(xxlResult.commercialDevelopmentUnits).toBeNull();
+    expect(xxlResult.commercialCalculation!.suggestedCommercialDU).toBeNull();
+  });
+
+  it("computes DU_FIXED_PRICE as Commercial DU * pricePerDU, NOT Base DU * pricePerDU", () => {
+    // High innovation pushes Commercial DU above Base DU (6) - DU_FIXED_PRICE
+    // must price against that adjusted figure, not the raw technical scope.
     const result = computeDuResult(
-      buildInput({ pricingStrategy: "DU_FIXED_PRICE", effortEstimate: buildEffortEstimate(1000, 1000, 1000) }),
+      buildInput({ pricingStrategy: "DU_FIXED_PRICE", innovation: buildInnovationAssessment("HIGH") }),
     );
 
     expect(result.developmentUnits).toBe(6);
-    expect(result.price).toBe(6 * PRICE_PER_DU);
+    expect(result.commercialDevelopmentUnits).toBeGreaterThan(6);
+    expect(result.price).toBe(result.commercialDevelopmentUnits! * PRICE_PER_DU);
+    expect(result.price).not.toBe(6 * PRICE_PER_DU);
+  });
+
+  it("still prices via HOURLY using AI-native hours directly, unaffected by Commercial DU adjustments", () => {
+    const result = computeDuResult(buildInput({ innovation: buildInnovationAssessment("HIGH") }));
+    expect(result.price).toBe(36 * BILLING_RATE_PER_HOUR);
   });
 
   it("never prices a requirement below the configured billing rate per hour under the HOURLY strategy, regardless of DU class", () => {

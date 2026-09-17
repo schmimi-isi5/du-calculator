@@ -4,6 +4,7 @@ import {
   answerClarifications,
   ApiError,
   applyAssumptionAction,
+  createGreenfieldSnapshot,
   getRepositorySnapshot,
   getScoringResult,
   resolveRequirementContext,
@@ -95,6 +96,24 @@ export default function App() {
       if (result.status === "SNAPSHOT_CREATED") {
         setRepoPickerRefreshToken((token) => token + 1);
       }
+    } catch (err) {
+      setRepoRequestError(err instanceof ApiError ? err.message : "Unerwarteter Fehler.");
+    } finally {
+      setRepoLoading(false);
+    }
+  }
+
+  async function handleGreenfield() {
+    setRepoLoading(true);
+    setRepoRequestError(null);
+    setSnapshot(null);
+    setRequirementContext(null);
+    setScoringResult(null);
+    try {
+      const result = await createGreenfieldSnapshot(title.trim() || undefined);
+      setSnapshot(result);
+      setRepositoryUrl(result.repositoryUrl);
+      setBranch(result.branch);
     } catch (err) {
       setRepoRequestError(err instanceof ApiError ? err.message : "Unerwarteter Fehler.");
     } finally {
@@ -288,6 +307,7 @@ export default function App() {
                   onChangeBranch={setBranch}
                   onChangeAccessToken={setAccessToken}
                   onAnalyze={handleAnalyze}
+                  onGreenfield={handleGreenfield}
                 />
 
                 {isRepositoryReady && (

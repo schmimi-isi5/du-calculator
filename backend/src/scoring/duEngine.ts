@@ -14,16 +14,19 @@
 import type {
   DimensionKey,
   DimensionScores,
+  DirectCostEstimate,
   DuClass,
   DuResult,
   EffortEstimate,
   ExistingAssetLeverage,
+  InnovationAssessment,
   PricingStrategy,
   ScoringStatus,
   TechnologyNarrative,
   TechnologyProfile,
 } from "../domain/types.js";
 import { DIMENSION_KEYS } from "../domain/types.js";
+import { computeCommercialCalculation } from "./commercialEngine.js";
 import { buildEffortEstimate } from "./effortEstimator.js";
 import { computePrice, type PricingConfig } from "./pricingEngine.js";
 import { buildTechnologyComparison } from "./technologyFitEngine.js";
@@ -136,13 +139,15 @@ export interface ComputeDuResultInput {
   technologyProfile: TechnologyProfile;
   existingAssetLeverage: ExistingAssetLeverage[];
   technologyNarratives: TechnologyNarrative[];
+  directCosts: DirectCostEstimate;
+  innovation: InnovationAssessment;
   pricingStrategy: PricingStrategy;
   pricingConfig: PricingConfig;
 }
 
 /**
- * Combines the DU Model with the Effort, Technology Fit, and Pricing
- * models into the final DuResult. This does NOT decide the
+ * Combines the DU Model with the Effort, Technology Fit, Commercial, and
+ * Pricing models into the final DuResult. This does NOT decide the
  * ScoringResult.status (NEEDS_CLARIFICATION vs SCORED vs
  * DECOMPOSITION_REQUIRED) - that is an application-level concern based on
  * confidenceLevel and duClass, handled by the caller (see api/requirementRoutes.ts).
@@ -160,9 +165,25 @@ export function computeDuResult(input: ComputeDuResultInput): DuResult {
     input.technologyNarratives,
     effortEstimate,
   );
+
+  const commercialCalculation = computeCommercialCalculation({
+    baseDU: developmentUnits,
+    aiNativeEffort: effortEstimate,
+    directCosts: input.directCosts,
+    innovation: input.innovation,
+  });
+  const commercialDevelopmentUnits = commercialCalculation.suggestedCommercialDU;
+  // Filled in here (not commercialEngine.ts) since only the caller knows
+  // whether a price-per-DU is actually configured - this is a preview
+  // figure, not necessarily the active pricing strategy's real price.
+  const targetCommercialValue =
+    commercialDevelopmentUnits !== null && input.pricingConfig.pricePerDU !== null
+      ? Math.round(commercialDevelopmentUnits * input.pricingConfig.pricePerDU * 100) / 100
+      : null;
+
   const price = computePrice(
     input.pricingStrategy,
-    { developmentUnits, likelyHours: effortEstimate.likelyHours },
+    { commercialDU: commercialDevelopmentUnits, likelyHours: effortEstimate.likelyHours },
     input.pricingConfig,
   );
 
@@ -177,7 +198,11 @@ export function computeDuResult(input: ComputeDuResultInput): DuResult {
     isRoughEstimate,
     effortEstimate,
     technologyComparison,
-    calculationModelVersion: "technology-fit-v2",
+    directCosts: input.directCosts,
+    innovation: input.innovation,
+    commercialCalculation: { ...commercialCalculation, targetCommercialValue },
+    commercialDevelopmentUnits,
+    calculationModelVersion: "commercial-du-v1",
   };
 }
 

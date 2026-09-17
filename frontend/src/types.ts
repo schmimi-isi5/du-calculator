@@ -47,11 +47,14 @@ export interface RepositoryProfile {
   findings: RepositoryFinding[];
 }
 
+export type RepositorySnapshotMode = "EXISTING_SYSTEM" | "GREENFIELD";
+
 export interface RepositorySnapshot {
   id: string;
   repositoryUrl: string;
   branch: string;
   status: RepositoryStatus;
+  mode?: RepositorySnapshotMode;
   commitSha: string | null;
   analyzedAt: string | null;
   fileTree: string[];
@@ -65,6 +68,7 @@ export interface RepositorySnapshotSummary {
   repositoryUrl: string;
   branch: string;
   status: RepositoryStatus;
+  mode?: RepositorySnapshotMode;
   commitSha: string | null;
   analyzedAt: string | null;
   profileSummary: string | null;
@@ -238,7 +242,7 @@ export interface AlternativeApproachEstimate {
   rationale: string;
 }
 
-export const TECHNOLOGY_IDS = ["AI_NATIVE", "N8N", "INTREXX"] as const;
+export const TECHNOLOGY_IDS = ["AI_NATIVE", "CLASSIC", "N8N", "INTREXX"] as const;
 export type TechnologyId = (typeof TECHNOLOGY_IDS)[number];
 export type TechnologyKey = TechnologyId | "N8N_INTREXX";
 
@@ -270,6 +274,13 @@ export interface EffortEstimate {
 /** How the commercial price is derived - see backend/src/scoring/pricingEngine.ts. */
 export type PricingStrategy = "HOURLY" | "DU_FIXED_PRICE";
 
+export interface TechnologyFactorContribution {
+  factor: TechnologyProfileFactor;
+  label: string;
+  contribution: number;
+  direction: "increases" | "decreases";
+}
+
 /** One row of the technology comparison - see backend/src/domain/types.ts TechnologyAssessment for the full computation contract. */
 export interface TechnologyAssessment {
   technology: TechnologyKey;
@@ -286,12 +297,59 @@ export interface TechnologyAssessment {
   disadvantages: string[];
   evidence: Evidence[];
   rationale: string;
+  contributions: TechnologyFactorContribution[];
+  varianceFlag: "HIGH_VARIANCE_COMPARISON" | null;
+}
+
+export type DirectCostType = "ONE_TIME_DEVELOPMENT" | "RECURRING_RUNTIME" | "BOTH";
+export type DirectCostStatus = "ESTIMATED" | "UNKNOWN" | "ESTIMATE_REQUIRED";
+
+export interface DirectCostItem {
+  amountEur: number | null;
+  costType: DirectCostType;
+  status: DirectCostStatus;
+  rationale: string;
+}
+
+export interface DirectCostEstimate {
+  aiApiCost: DirectCostItem;
+  infrastructureCost: DirectCostItem;
+  thirdPartyCost: DirectCostItem;
+  otherDirectCost: DirectCostItem;
+}
+
+export type InnovationLevel = "LOW" | "MEDIUM" | "HIGH";
+
+export interface InnovationAssessment {
+  level: InnovationLevel;
+  rationale: string;
+  evidence: Evidence[];
+  confidence: number;
+}
+
+export type CalibrationStatus = "INITIAL_HYPOTHESIS" | "EXPERT_CALIBRATED" | "EMPIRICALLY_CALIBRATED" | "DATA_DRIVEN";
+
+export interface CommercialAdjustment {
+  label: string;
+  deltaDU: number;
+  reason: string;
+}
+
+/** Output of the Commercial Model - see backend/src/scoring/commercialEngine.ts. Base DU adjusted for effort/direct costs/innovation/risk - deliberately NOT a time conversion. */
+export interface CommercialCalculation {
+  baseDU: number | null;
+  suggestedCommercialDU: number | null;
+  commercialDUConfidence: number;
+  targetCommercialValue: number | null;
+  rationale: string;
+  adjustments: CommercialAdjustment[];
+  calibrationStatus: CalibrationStatus;
 }
 
 export interface DuResult {
   weightedScore: number;
   duClass: DuClass;
-  /** null for XXL - no artificially precise extrapolated count is produced; decomposition is recommended instead. */
+  /** Base DU - null for XXL, no artificially precise extrapolated count is produced; decomposition is recommended instead. NOT the commercial unit offered to the customer - see commercialDevelopmentUnits. */
   developmentUnits: number | null;
   price: number | null;
   pricingStrategy: PricingStrategy;
@@ -302,7 +360,11 @@ export interface DuResult {
   /** Absent for a DuResult computed before this change (calculationModelVersion undefined = "legacy-v1"). */
   effortEstimate?: EffortEstimate;
   technologyComparison?: TechnologyAssessment[];
-  calculationModelVersion?: "technology-fit-v2";
+  directCosts?: DirectCostEstimate;
+  innovation?: InnovationAssessment;
+  commercialCalculation?: CommercialCalculation;
+  commercialDevelopmentUnits?: number | null;
+  calculationModelVersion?: "technology-fit-v2" | "commercial-du-v1";
   /** @deprecated legacy-v1 only. */
   timeEstimate?: TimeEstimate;
   /** @deprecated legacy-v1 only. */

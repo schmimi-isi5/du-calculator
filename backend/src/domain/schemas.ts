@@ -217,6 +217,55 @@ export const EffortEstimateSchema = z.object({
   ),
 });
 
+// ---------------------------------------------------------------------------
+// Commercial Model (D) input schemas - see domain/commercial.ts for the
+// calculation constants and scoring/commercialEngine.ts for how these
+// combine with Base DU and the Effort Model. The AI provides these as
+// evidence-grounded assessments; it never states a Commercial DU or price.
+// ---------------------------------------------------------------------------
+
+const DirectCostItemSchema = z.object({
+  amountEur: z
+    .number()
+    .min(0)
+    .nullable()
+    .describe("EUR, or null when status is not ESTIMATED - never invent a number to fill the gap."),
+  costType: z
+    .enum(["ONE_TIME_DEVELOPMENT", "RECURRING_RUNTIME", "BOTH"])
+    .describe(
+      "ONE_TIME_DEVELOPMENT: incurred only while building this (e.g. dev-time LLM token spend). RECURRING_RUNTIME: incurred every time the delivered feature runs in production (e.g. a production agent's ongoing token/API usage). BOTH if genuinely both apply.",
+    ),
+  status: z
+    .enum(["ESTIMATED", "UNKNOWN", "ESTIMATE_REQUIRED"])
+    .describe("UNKNOWN/ESTIMATE_REQUIRED when you cannot ground a number in the requirement/repository - do not guess."),
+  rationale: z.string().describe("In German - what this cost covers and how you arrived at it, or why it's not estimable yet."),
+});
+
+/**
+ * Structured direct costs beyond human effort - AI/API usage, infrastructure,
+ * third-party services/licenses. Never mixed into a DU complexity score;
+ * these feed the Commercial Model (D) and the customer-facing "laufende
+ * Kosten" disclosure only.
+ */
+export const DirectCostEstimateSchema = z.object({
+  aiApiCost: DirectCostItemSchema.describe("LLM tokens, embeddings, OCR, or other external AI API usage."),
+  infrastructureCost: DirectCostItemSchema.describe("Compute, storage, vector DB, or other additional infrastructure."),
+  thirdPartyCost: DirectCostItemSchema.describe("Third-party APIs, licenses, or external services."),
+  otherDirectCost: DirectCostItemSchema.describe("Any other direct cost not covered by the categories above."),
+});
+
+/**
+ * Whether this requirement genuinely requires new technical solutions,
+ * experimentation, or produces reusable new ISIFIVE IP - NOT a proxy for
+ * "uses AI = expensive". See ai/prompts.ts INNOVATION_RULE.
+ */
+export const InnovationAssessmentSchema = z.object({
+  level: z.enum(["LOW", "MEDIUM", "HIGH"]),
+  rationale: z.string().describe("In German - grounded in what specifically is or isn't novel here."),
+  evidence: z.array(EvidenceSchema),
+  confidence: z.number().min(0).max(1),
+});
+
 /**
  * Impact analysis and scoring merged into one structured response instead of
  * two sequential AI calls - both need the same repository context and
@@ -233,10 +282,12 @@ export const RequirementAssessmentSchema = z.object({
   technologyProfile: TechnologyProfileSchema,
   existingAssetLeverage: z
     .array(ExistingAssetLeverageSchema)
-    .describe("Exactly one entry per technology in TECHNOLOGY_IDS (AI_NATIVE, N8N, INTREXX)."),
+    .describe("Exactly one entry per technology in TECHNOLOGY_IDS (AI_NATIVE, CLASSIC, N8N, INTREXX)."),
   technologyNarratives: z
     .array(TechnologyNarrativeSchema)
-    .describe("Exactly one entry per technology in TECHNOLOGY_IDS (AI_NATIVE, N8N, INTREXX)."),
+    .describe("Exactly one entry per technology in TECHNOLOGY_IDS (AI_NATIVE, CLASSIC, N8N, INTREXX)."),
+  directCosts: DirectCostEstimateSchema,
+  innovation: InnovationAssessmentSchema,
 });
 
 // ---------------------------------------------------------------------------

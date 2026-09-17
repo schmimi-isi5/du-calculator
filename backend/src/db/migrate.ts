@@ -27,6 +27,14 @@ CREATE TABLE IF NOT EXISTS repository_snapshots (
 ALTER TABLE repository_snapshots ADD COLUMN IF NOT EXISTS file_excerpts JSONB;
 ALTER TABLE repository_snapshots ADD COLUMN IF NOT EXISTS omitted_file_count INTEGER;
 
+-- GREENFIELD support (commercial-du-v1 spec section 4): a requirement with
+-- no existing repository still creates a snapshot row (mode='GREENFIELD',
+-- a synthetic profile, no clone) so it reuses every existing snapshot-keyed
+-- code path instead of a parallel "no repository" flow. Existing rows
+-- default to 'EXISTING_SYSTEM', the only mode that existed before this
+-- column.
+ALTER TABLE repository_snapshots ADD COLUMN IF NOT EXISTS mode TEXT NOT NULL DEFAULT 'EXISTING_SYSTEM';
+
 CREATE INDEX IF NOT EXISTS idx_repository_snapshots_created_at ON repository_snapshots (created_at DESC);
 
 -- Assumption & Clarification Engine: the living state of "what do we know
@@ -157,6 +165,19 @@ CREATE TABLE IF NOT EXISTS actual_effort_records (
 );
 
 CREATE INDEX IF NOT EXISTS idx_actual_effort_records_scoring_id ON actual_effort_records (scoring_id);
+
+-- commercial-du-v1 spec sections 28/29: an immutable snapshot of what was
+-- predicted at the moment this actual was recorded (a ScoringResult can
+-- later be re-scored, overwriting its own du_result - this column is what
+-- keeps the historical prediction-vs-actual pairing intact regardless), plus
+-- the extra structured actuals the spec asks for. All nullable/optional so
+-- existing rows and older API clients remain valid.
+ALTER TABLE actual_effort_records ADD COLUMN IF NOT EXISTS prediction_snapshot JSONB;
+ALTER TABLE actual_effort_records ADD COLUMN IF NOT EXISTS direct_costs_actual JSONB;
+ALTER TABLE actual_effort_records ADD COLUMN IF NOT EXISTS rework_hours NUMERIC(10, 2);
+ALTER TABLE actual_effort_records ADD COLUMN IF NOT EXISTS bugfix_hours NUMERIC(10, 2);
+ALTER TABLE actual_effort_records ADD COLUMN IF NOT EXISTS acceptance_iterations INTEGER;
+ALTER TABLE actual_effort_records ADD COLUMN IF NOT EXISTS scope_changed BOOLEAN;
 `;
 
 export async function runMigrations(): Promise<void> {

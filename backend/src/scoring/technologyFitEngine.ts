@@ -23,6 +23,7 @@ import type {
   Evidence,
   ExistingAssetLeverage,
   TechnologyAssessment,
+  TechnologyFactorContribution,
   TechnologyNarrative,
   TechnologyProfile,
 } from "../domain/types.js";
@@ -30,6 +31,8 @@ import {
   ASSET_LEVERAGE_WEIGHT,
   COMBINATION_INTEGRATION_OVERHEAD,
   COMBINATION_OPERATIONAL_OVERHEAD,
+  HIGH_VARIANCE_LOWER_THRESHOLD,
+  HIGH_VARIANCE_UPPER_THRESHOLD,
   RAW_SCORE_EPSILON,
   RELATIVE_EFFORT_FACTOR_GUARDRAIL_MAX,
   RELATIVE_EFFORT_FACTOR_GUARDRAIL_MIN,
@@ -44,10 +47,18 @@ import {
 
 const TECHNOLOGY_LABELS: Record<TechnologyKey, string> = {
   AI_NATIVE: "KI-native Individualentwicklung",
+  CLASSIC: "Klassische Individualentwicklung",
   N8N: "n8n (Low-Code/Automatisierung)",
   INTREXX: "Intrexx (Low-Code-Plattform)",
   N8N_INTREXX: "n8n + Intrexx kombiniert",
 };
+
+/** Business-meaning flag (spec: HIGH_VARIANCE_COMPARISON) - not an error, just "verify the drivers". Distinct from the technical guardrail clamp above. */
+function varianceFlagFor(relativeEffortFactor: number): TechnologyAssessment["varianceFlag"] {
+  return relativeEffortFactor < HIGH_VARIANCE_LOWER_THRESHOLD || relativeEffortFactor > HIGH_VARIANCE_UPPER_THRESHOLD
+    ? "HIGH_VARIANCE_COMPARISON"
+    : null;
+}
 
 function combinationKey(members: readonly TechnologyId[]): TechnologyKey {
   return members.join("_") as TechnologyKey;
@@ -140,6 +151,18 @@ function buildRationale(technology: TechnologyKey, profile: TechnologyProfile, c
   return `Grobe Schätzung: v. a. geprägt durch ${driving.join(" und ")} - relativ zur AI-nativen Individualentwicklung (Referenz).`;
 }
 
+/** Full signed per-factor breakdown for explainability ("why is n8n at 162%?") - see TechnologyAssessment.contributions. Sorted by absolute magnitude, largest first. */
+function buildContributions(profile: TechnologyProfile, capability: CapabilityProfile, count: number): TechnologyFactorContribution[] {
+  return topDrivingFactors(profile, capability, count).map((d) => ({
+    factor: d.factor,
+    label: FACTOR_LABELS_DE[d.factor],
+    contribution: round2(d.contribution),
+    // A positive capability effect REDUCES this technology's raw effort
+    // score (rawEffortScore = 1 - effect) - i.e. "decreases" its effort.
+    direction: d.contribution >= 0 ? "decreases" : "increases",
+  }));
+}
+
 function evidenceFor(profile: TechnologyProfile, capability: CapabilityProfile, assetEvidence: Evidence[]): Evidence[] {
   const driving = topDrivingFactors(profile, capability, 2).flatMap((d) => d.evidence);
   return [...assetEvidence, ...driving];
@@ -219,6 +242,8 @@ export function buildTechnologyComparison(
       disadvantages: narrative?.disadvantages ?? [],
       evidence: evidenceFor(profile, capability, leverage?.evidence ?? []),
       rationale: buildRationale(technology, profile, capability),
+      contributions: buildContributions(profile, capability, 6),
+      varianceFlag: technology === "AI_NATIVE" ? null : varianceFlagFor(relativeEffortFactor),
     };
   });
 
@@ -297,5 +322,7 @@ function buildCombinationRow(
     rationale: `Grobe Schätzung: nutzt jeweils die stärkere Einzeltechnologie pro Bereich - v. a. ${driving.join(
       " und ",
     )} - abzüglich Integrations-/Betriebsaufwand für die Kombination zweier Systeme.`,
+    contributions: buildContributions(profile, combinedCapability, 6),
+    varianceFlag: varianceFlagFor(relativeEffortFactor),
   };
 }

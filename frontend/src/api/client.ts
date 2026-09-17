@@ -86,6 +86,11 @@ export function analyzeRepository(
   });
 }
 
+/** GREENFIELD mode (commercial-du-v1 spec section 4) - no repository, creates a synthetic snapshot instantly. */
+export function createGreenfieldSnapshot(label?: string): Promise<RepositorySnapshot> {
+  return postJson<RepositorySnapshot>("/api/repository/greenfield", { label: label || undefined });
+}
+
 export function listRepositorySnapshots(): Promise<RepositorySnapshotSummary[]> {
   return getJson<RepositorySnapshotSummary[]>("/api/repository");
 }

@@ -26,6 +26,7 @@ import type {
   Requirement,
   RepositoryContext,
   RepositoryProfile,
+  RepositorySnapshotMode,
   RequirementAssessment,
 } from "../domain/types.js";
 import type { AIProvider, RepositoryIdentity, ResolvedRequirementKnowledge, UsageContext } from "./AIProvider.js";
@@ -110,8 +111,9 @@ export class OpenAICompatibleProvider implements AIProvider {
     qualityLevel: QualityLevel,
     model: string,
     usageContext: UsageContext,
+    mode?: RepositorySnapshotMode,
   ): Promise<ContextResolutionOutput> {
-    const prompt = buildContextResolutionPrompt(requirement, profile, context, answeredClarifications, qualityLevel);
+    const prompt = buildContextResolutionPrompt(requirement, profile, context, answeredClarifications, qualityLevel, mode);
     return this.complete<ContextResolutionOutput>(
       prompt,
       ContextResolutionOutputSchema,
@@ -130,8 +132,9 @@ export class OpenAICompatibleProvider implements AIProvider {
     qualityLevel: QualityLevel,
     model: string,
     usageContext: UsageContext,
+    mode?: RepositorySnapshotMode,
   ): Promise<RequirementAssessment> {
-    const prompt = buildAssessmentPrompt(requirement, profile, context, knowledge, qualityLevel);
+    const prompt = buildAssessmentPrompt(requirement, profile, context, knowledge, qualityLevel, mode);
     return this.complete<RequirementAssessment>(
       prompt,
       RequirementAssessmentSchema,
