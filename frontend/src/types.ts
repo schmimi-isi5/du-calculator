@@ -318,10 +318,31 @@ export interface DirectCostEstimate {
   otherDirectCost: DirectCostItem;
 }
 
+/** @deprecated commercial-du-v1 only - see ImplementationNoveltyLevel/ReusableInnovationLevel. */
 export type InnovationLevel = "LOW" | "MEDIUM" | "HIGH";
 
+/** @deprecated commercial-du-v1 only. */
 export interface InnovationAssessment {
   level: InnovationLevel;
+  rationale: string;
+  evidence: Evidence[];
+  confidence: number;
+}
+
+export type ImplementationNoveltyLevel = "LOW" | "MEDIUM" | "HIGH";
+
+export interface ImplementationNoveltyAssessment {
+  level: ImplementationNoveltyLevel;
+  rationale: string;
+  evidence: Evidence[];
+  confidence: number;
+}
+
+export type ReusableInnovationLevel = "NONE" | "LOW" | "MEDIUM" | "HIGH";
+
+/** Captured/displayed only - never feeds an automatic Commercial DU or price adjustment. */
+export interface ReusableInnovationAssessment {
+  level: ReusableInnovationLevel;
   rationale: string;
   evidence: Evidence[];
   confidence: number;
@@ -335,7 +356,33 @@ export interface CommercialAdjustment {
   reason: string;
 }
 
-/** Output of the Commercial Model - see backend/src/scoring/commercialEngine.ts. Base DU adjusted for effort/direct costs/innovation/risk - deliberately NOT a time conversion. */
+/** One Base DU class's provisional effort comparison point - NOT a Development Unit definition. */
+export interface EffortBenchmarkInfo {
+  class: string;
+  expectedLikelyHours: number;
+  calibrationStatus: CalibrationStatus;
+  sampleSize: number;
+  modelVersion: string;
+}
+
+export interface EffortVariance {
+  hours: number;
+  percent: number;
+}
+
+/** Exactly one of productivityGain/positiveEffortOverrun is non-null (or both null when effort ≈ benchmark). */
+export interface EffortAnalysis {
+  benchmark: EffortBenchmarkInfo;
+  predictedLikelyHours: number;
+  variance: EffortVariance;
+  productivityGain: EffortVariance | null;
+  positiveEffortOverrun: EffortVariance | null;
+}
+
+/** REQUIRES_CLARIFICATION means effort confidence is too low to responsibly present a confident Commercial DU offer. */
+export type CommercialEstimateStatus = "OK" | "REQUIRES_CLARIFICATION";
+
+/** Output of the Commercial Model - see backend/src/scoring/commercialEngine.ts. Base DU adjusted for effort/direct costs/implementation novelty/risk - deliberately NOT a time conversion. */
 export interface CommercialCalculation {
   baseDU: number | null;
   suggestedCommercialDU: number | null;
@@ -344,6 +391,13 @@ export interface CommercialCalculation {
   rationale: string;
   adjustments: CommercialAdjustment[];
   calibrationStatus: CalibrationStatus;
+  /** commercial-du-v2 only. */
+  effortAnalysis?: EffortAnalysis | null;
+  commercialDUBeforeGuardrail?: number | null;
+  commercialDUAfterGuardrail?: number | null;
+  guardrailApplied?: boolean;
+  guardrailReason?: string | null;
+  estimateStatus?: CommercialEstimateStatus;
 }
 
 export interface DuResult {
@@ -361,10 +415,13 @@ export interface DuResult {
   effortEstimate?: EffortEstimate;
   technologyComparison?: TechnologyAssessment[];
   directCosts?: DirectCostEstimate;
+  /** @deprecated commercial-du-v1 only - see implementationNovelty/reusableInnovationIp. */
   innovation?: InnovationAssessment;
+  implementationNovelty?: ImplementationNoveltyAssessment;
+  reusableInnovationIp?: ReusableInnovationAssessment;
   commercialCalculation?: CommercialCalculation;
   commercialDevelopmentUnits?: number | null;
-  calculationModelVersion?: "technology-fit-v2" | "commercial-du-v1";
+  calculationModelVersion?: "technology-fit-v2" | "commercial-du-v1" | "commercial-du-v2";
   /** @deprecated legacy-v1 only. */
   timeEstimate?: TimeEstimate;
   /** @deprecated legacy-v1 only. */

@@ -6,7 +6,7 @@ import {
   TECHNOLOGY_PROFILE_FACTORS,
 } from "../domain/technology.js";
 import type { TechnologyProfile } from "../domain/types.js";
-import { buildTechnologyComparison } from "./technologyFitEngine.js";
+import { buildTechnologyComparison, rawEffortScore } from "./technologyFitEngine.js";
 import { buildEffortEstimate, buildExistingAssetLeverage, buildTechnologyNarratives, buildTechnologyProfile } from "./testFixtures.js";
 
 const AI_NATIVE_EFFORT = { minHours: 20, likelyHours: 30, maxHours: 45 };
@@ -345,5 +345,49 @@ describe("TechnologyAssessment.varianceFlag", () => {
     for (const row of rows) {
       expect(row.varianceFlag).toBeNull();
     }
+  });
+});
+
+// --- commercial-du-calibration-v2 spec: Test J - CLASSIC Symmetry ---------
+// No code anywhere enforces "AI_NATIVE must beat CLASSIC" or vice versa -
+// the outcome is entirely a function of the (freely editable)
+// CapabilityProfile data. Proven directly against the exported
+// rawEffortScore formula: it treats any two capability profiles
+// identically, regardless of which technology name they happen to belong
+// to in production. Today's CLASSIC hypothesis values happen to be lower
+// than AI_NATIVE's for every factor (see domain/technology.ts) - that is a
+// data choice, not a structural guarantee, and this test proves the
+// formula itself has no opinion about it.
+
+describe("Test J - CLASSIC symmetry (no hardcoded technology ordering)", () => {
+  it("ranks two capability profiles purely by their values, not by which technology they represent", () => {
+    const profile = buildTechnologyProfile({ customAlgorithms: { score: 5 }, complexStateManagement: { score: 4 } });
+
+    // A hypothetical "CLASSIC" profile deliberately made SUPERIOR to
+    // AI_NATIVE's real one on the factors this profile cares about most -
+    // the formula must reflect that, proving it has no built-in preference.
+    const hypotheticalSuperiorClassic = {
+      ...TECHNOLOGY_CAPABILITY_PROFILES.CLASSIC,
+      customAlgorithms: TECHNOLOGY_CAPABILITY_PROFILES.AI_NATIVE.customAlgorithms + 0.1,
+      complexStateManagement: TECHNOLOGY_CAPABILITY_PROFILES.AI_NATIVE.complexStateManagement + 0.1,
+    };
+
+    const aiNativeRaw = rawEffortScore(profile, TECHNOLOGY_CAPABILITY_PROFILES.AI_NATIVE);
+    const hypotheticalClassicRaw = rawEffortScore(profile, hypotheticalSuperiorClassic);
+
+    // Lower raw score = better fit = less effort - the hypothetical CLASSIC
+    // profile must come out AHEAD of AI_NATIVE here, exactly because its
+    // data says so, with nothing in the formula overriding that.
+    expect(hypotheticalClassicRaw).toBeLessThan(aiNativeRaw);
+  });
+
+  it("reproduces today's real CLASSIC-vs-AI_NATIVE ordering purely from the configured data, not from a special case", () => {
+    const profile = buildTechnologyProfile({ uiForms: { score: 5 }, crudDataManagement: { score: 5 } });
+    const aiNativeRaw = rawEffortScore(profile, TECHNOLOGY_CAPABILITY_PROFILES.AI_NATIVE);
+    const classicRaw = rawEffortScore(profile, TECHNOLOGY_CAPABILITY_PROFILES.CLASSIC);
+    // Today's data has CLASSIC behind AI_NATIVE for boilerplate-heavy work -
+    // confirmed here as a DATA fact (via the real capability table), not
+    // asserted as a rule the formula enforces (proven by the test above).
+    expect(classicRaw).toBeGreaterThan(aiNativeRaw);
   });
 });

@@ -363,10 +363,18 @@ Direct costs (directCosts) - structured, NOT mixed into any DU dimension score. 
 - Most requirements will have low or zero direct costs beyond human effort - do not inflate this to seem thorough.
 `.trim();
 
-const INNOVATION_RULE = `
-Innovation assessment (innovation) - level LOW/MEDIUM/HIGH for whether this requirement genuinely needs new technical solutions, has no existing reusable components to build on, requires experimental architecture, needs non-trivial evaluation, or produces reusable new ISIFIVE IP:
-- This is NOT a proxy for "uses AI/LLMs = automatically HIGH". A well-trodden RAG integration using an existing, already-proven internal pattern is LOW/MEDIUM innovation even though it involves AI; a genuinely novel evaluation/agent architecture with no internal precedent is HIGH even if the coding itself is simple.
+const IMPLEMENTATION_NOVELTY_RULE = `
+Implementation novelty (implementationNovelty) - level LOW/MEDIUM/HIGH for how much technically new or not-yet-mastered ground ISIFIVE must cover to deliver THIS specific requirement: new architecture, experimental technology, an unfamiliar integration, novel AI/agent logic, a new evaluation methodology, missing reusable components, or a required technical proof of concept.
+- This is NOT a proxy for "uses AI/LLMs = automatically HIGH". A well-trodden RAG integration using an existing, already-proven internal pattern is LOW/MEDIUM even though it involves AI; a genuinely novel evaluation/agent architecture with no internal precedent is HIGH even if the coding itself is simple.
 - Ground the level in concrete rationale and evidence - never assign HIGH just because a requirement sounds technically impressive.
+- This is a separate question from reusableInnovationIp below - a requirement can be technically novel for ISIFIVE (HIGH implementationNovelty) without creating anything reusable afterward, and vice versa.
+`.trim();
+
+const REUSABLE_INNOVATION_RULE = `
+Reusable innovation / IP (reusableInnovationIp) - level NONE/LOW/MEDIUM/HIGH for whether delivering this requirement creates new reusable technical substance ISIFIVE can use again in OTHER requirements or projects: a new Konturos building block, a reusable agent, a generic connector, a generic RAG component, a new library, a reusable architecture piece, a generic test/evaluation building block, etc.
+- NONE/LOW is the common case - most requirements are specific to one customer's need and produce nothing meaningfully reusable elsewhere.
+- Ground the level in concrete rationale and evidence - do not assign HIGH just because the requirement uses interesting technology; the bar is genuine reusability beyond this one requirement.
+- This assessment is captured for later business calibration only - it does not by itself change the price or DU count of this requirement.
 `.trim();
 
 const GREENFIELD_MODE_NOTE = `
@@ -393,7 +401,7 @@ export function buildAssessmentPrompt(
 ): PromptParts {
   const system = `You are a senior software architect performing a Requirement Impact Analysis, DU scoring, and technology/effort/commercial assessment for the ISIFIVE DU Calculator, in one pass. First determine what already exists, what can be reused, what must be modified, and what must be newly created for this requirement against a repository you have already profiled. Then, using that same analysis, score each of the eight fixed dimensions 1 (very low) to 5 (very high), with a summary, a detailed rationale, evidence, a confidence (0.0-1.0), and any missing information that limits your confidence - plus one overall assessment synthesizing all eight dimensions. You NEVER decide a final Development Unit count - that class/count is computed deterministically by the application from your per-dimension scores alone.
 
-Separately - and this is NOT a function of the eight dimension scores - you also assess: an independent AI-native human-effort estimate (effortEstimate), the requirement's technical shape across 12 factors (technologyProfile), how much each production method (AI-native custom code, classical manual custom code, n8n, Intrexx) can lean on what already exists in this repository (existingAssetLeverage), a qualitative advantages/disadvantages read per production method (technologyNarratives), structured direct costs (directCosts), and an innovation assessment (innovation). The application computes the actual relative effort, Commercial DU, and price deterministically from these - you never state a fit percentage, a relative effort, a DU class, a Commercial DU number, or a price yourself. See the dedicated rules for all of this below.
+Separately - and this is NOT a function of the eight dimension scores - you also assess: an independent AI-native human-effort estimate (effortEstimate), the requirement's technical shape across 12 factors (technologyProfile), how much each production method (AI-native custom code, classical manual custom code, n8n, Intrexx) can lean on what already exists in this repository (existingAssetLeverage), a qualitative advantages/disadvantages read per production method (technologyNarratives), structured direct costs (directCosts), how much technically new ground this specific requirement covers for ISIFIVE (implementationNovelty), and whether it creates reusable technical substance for future work (reusableInnovationIp). The application computes the actual relative effort, Commercial DU, and price deterministically from these - you never state a fit percentage, a relative effort, a DU class, a Commercial DU number, or a price yourself. See the dedicated rules for all of this below.
 
 ${DIMENSION_DESCRIPTIONS}
 
@@ -421,7 +429,9 @@ ${ANTI_BIAS_RULE}
 
 ${DIRECT_COST_RULE}
 
-${INNOVATION_RULE}
+${IMPLEMENTATION_NOVELTY_RULE}
+
+${REUSABLE_INNOVATION_RULE}
 ${mode === "GREENFIELD" ? `\n${GREENFIELD_MODE_NOTE}\n` : ""}
 ${QUALITY_PROFILES[qualityLevel].rationaleGuidance}
 

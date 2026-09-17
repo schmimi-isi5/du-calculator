@@ -235,6 +235,61 @@ export function ManagementReport({ result }: Props) {
         </div>
       )}
 
+      {view === "internal" && du.commercialCalculation?.estimateStatus === "REQUIRES_CLARIFICATION" && (
+        <div className="notice" style={{ marginTop: 10 }}>
+          Die Effort Confidence dieser Anforderung ist sehr niedrig - statt eines automatischen Risikoaufschlags
+          empfiehlt das System, die Anforderung zunächst besser zu verstehen oder zu zerlegen (Discovery), bevor ein
+          belastbares Angebot erstellt wird. Der unten gezeigte Commercial-DU-Wert ist nur eine interne
+          Referenzgröße, keine belastbare Kalkulationsgrundlage.
+        </div>
+      )}
+
+      {view === "internal" && du.commercialCalculation?.effortAnalysis && (
+        <div className="report-section">
+          <h4>Effort Benchmark & Produktivität</h4>
+          <p className="report-note" style={{ marginBottom: 10 }}>
+            Der Benchmark ist ein vorläufiger Vergleichswert für den typischerweise erwarteten Aufwand dieser
+            Base-DU-Klasse - <b>keine Definition einer Development Unit</b>. Ein Produktivitätsgewinn (Aufwand unter
+            Benchmark) reduziert Commercial DU standardmäßig nicht automatisch.
+          </p>
+          <div className="report-summary-grid">
+            <div className="report-summary-item">
+              <small>Benchmark ({du.commercialCalculation.effortAnalysis.benchmark.class})</small>
+              <b>{du.commercialCalculation.effortAnalysis.benchmark.expectedLikelyHours.toFixed(0)} Std.</b>
+            </div>
+            <div className="report-summary-item">
+              <small>Vorhergesagt (wahrsch.)</small>
+              <b>{du.commercialCalculation.effortAnalysis.predictedLikelyHours.toFixed(0)} Std.</b>
+            </div>
+            <div className="report-summary-item">
+              <small>Benchmark-Status</small>
+              <b>
+                {du.commercialCalculation.effortAnalysis.benchmark.calibrationStatus} (n=
+                {du.commercialCalculation.effortAnalysis.benchmark.sampleSize})
+              </b>
+            </div>
+            {du.commercialCalculation.effortAnalysis.productivityGain && (
+              <div className="report-summary-item">
+                <small>Produktivitätsgewinn</small>
+                <b>
+                  {du.commercialCalculation.effortAnalysis.productivityGain.hours.toFixed(0)} Std. (
+                  {Math.round(du.commercialCalculation.effortAnalysis.productivityGain.percent * 100)}%)
+                </b>
+              </div>
+            )}
+            {du.commercialCalculation.effortAnalysis.positiveEffortOverrun && (
+              <div className="report-summary-item">
+                <small>Mehraufwand ggü. Benchmark</small>
+                <b>
+                  +{du.commercialCalculation.effortAnalysis.positiveEffortOverrun.hours.toFixed(0)} Std. (+
+                  {Math.round(du.commercialCalculation.effortAnalysis.positiveEffortOverrun.percent * 100)}%)
+                </b>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {view === "internal" && du.commercialCalculation && (
         <div className="report-section">
           <h4>Kaufmännische Kalkulation (Commercial DU)</h4>
@@ -283,12 +338,19 @@ export function ManagementReport({ result }: Props) {
               ))}
             </tbody>
           </table>
+          {du.commercialCalculation.guardrailApplied && (
+            <p className="report-note report-note-warning" style={{ marginTop: 10 }}>
+              COMMERCIAL_DU_GUARDRAIL_APPLIED: {du.commercialCalculation.guardrailReason} (vor Begrenzung:{" "}
+              {du.commercialCalculation.commercialDUBeforeGuardrail}, danach:{" "}
+              {du.commercialCalculation.commercialDUAfterGuardrail})
+            </p>
+          )}
         </div>
       )}
 
-      {view === "internal" && (du.directCosts || du.innovation) && (
+      {view === "internal" && (du.directCosts || du.implementationNovelty || du.reusableInnovationIp || du.innovation) && (
         <div className="report-section">
-          <h4>Direkte Kosten & Innovationsgrad</h4>
+          <h4>Direkte Kosten, Implementation Novelty & Reusable IP</h4>
           {du.directCosts && (
             <div className="report-summary-grid" style={{ marginBottom: 10 }}>
               {(
@@ -306,10 +368,23 @@ export function ManagementReport({ result }: Props) {
               ))}
             </div>
           )}
-          {du.innovation && (
+          {du.implementationNovelty && (
             <p className="report-note">
-              Innovationsgrad <b>{du.innovation.level}</b> ({Math.round(du.innovation.confidence * 100)}% Confidence):{" "}
-              {du.innovation.rationale}
+              Implementation Novelty <b>{du.implementationNovelty.level}</b> (
+              {Math.round(du.implementationNovelty.confidence * 100)}% Confidence): {du.implementationNovelty.rationale}
+            </p>
+          )}
+          {du.reusableInnovationIp && (
+            <p className="report-note">
+              Reusable Innovation / IP <b>{du.reusableInnovationIp.level}</b> (
+              {Math.round(du.reusableInnovationIp.confidence * 100)}% Confidence): {du.reusableInnovationIp.rationale}
+              {du.reusableInnovationIp.level !== "NONE" && " - rein informativ, noch kein automatischer Preis-/DU-Aufschlag."}
+            </p>
+          )}
+          {!du.implementationNovelty && du.innovation && (
+            <p className="report-note">
+              Innovationsgrad <b>{du.innovation.level}</b> ({Math.round(du.innovation.confidence * 100)}% Confidence,
+              älteres Berechnungsmodell): {du.innovation.rationale}
             </p>
           )}
         </div>

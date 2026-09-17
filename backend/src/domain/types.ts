@@ -305,16 +305,48 @@ export interface DirectCostEstimate {
   otherDirectCost: DirectCostItem;
 }
 
+/** @deprecated Superseded by the ImplementationNovelty/ReusableInnovationIp split (commercial-du-v2) - a single innovation level conflated "how technically novel is this for us" with "does this create reusable IP", two questions with very different commercial implications. Kept only so a DuResult read from a commercial-du-v1 row still type-checks. */
 export type InnovationLevel = "LOW" | "MEDIUM" | "HIGH";
 
-/**
- * Whether this requirement genuinely requires new technical solutions,
- * experimentation, or produces reusable new ISIFIVE IP - NOT a proxy for
- * "uses AI = expensive". See ai/prompts.ts INNOVATION_RULE. May influence
- * Commercial DU; must never retroactively change a Base DU dimension score.
- */
+/** @deprecated commercial-du-v1 only - see InnovationLevel. */
 export interface InnovationAssessment {
   level: InnovationLevel;
+  rationale: string;
+  evidence: Evidence[];
+  confidence: number;
+}
+
+/**
+ * "How much technically new or not-yet-mastered ground must ISIFIVE cover
+ * for THIS specific requirement?" (new architecture, experimental
+ * technology, an unfamiliar integration, novel AI/agent logic, a required
+ * proof of concept, ...). May influence Commercial DU (see
+ * domain/commercial.ts IMPLEMENTATION_NOVELTY_*_BONUS_FRACTION); must never
+ * retroactively change a Base DU dimension score.
+ */
+export type ImplementationNoveltyLevel = "LOW" | "MEDIUM" | "HIGH";
+
+export interface ImplementationNoveltyAssessment {
+  level: ImplementationNoveltyLevel;
+  rationale: string;
+  evidence: Evidence[];
+  confidence: number;
+}
+
+/**
+ * "Does delivering this create new reusable technical substance ISIFIVE
+ * can use again in other requirements/projects?" (a new Konturos building
+ * block, a reusable agent, a generic connector/RAG component, a new
+ * library, a reusable architecture piece, a generic test/evaluation
+ * building block, ...). Captured and persisted for later calibration, but
+ * deliberately produces NO automatic Commercial DU or price adjustment yet
+ * - there is no validated commercial rule for pricing reusable IP, and
+ * inventing one here would just be a new arbitrary formula.
+ */
+export type ReusableInnovationLevel = "NONE" | "LOW" | "MEDIUM" | "HIGH";
+
+export interface ReusableInnovationAssessment {
+  level: ReusableInnovationLevel;
   rationale: string;
   evidence: Evidence[];
   confidence: number;
@@ -330,7 +362,8 @@ export interface RequirementAssessment {
   existingAssetLeverage: ExistingAssetLeverage[];
   technologyNarratives: TechnologyNarrative[];
   directCosts: DirectCostEstimate;
-  innovation: InnovationAssessment;
+  implementationNovelty: ImplementationNoveltyAssessment;
+  reusableInnovationIp: ReusableInnovationAssessment;
 }
 
 export type DuClass = "XS" | "S" | "M" | "L" | "XL" | "XXL";
@@ -383,12 +416,58 @@ export interface CommercialAdjustment {
   reason: string;
 }
 
+/** One Base DU class's provisional effort comparison point - see domain/commercial.ts BASE_DU_EFFORT_BENCHMARKS. NOT a Development Unit definition. */
+export interface EffortBenchmarkInfo {
+  class: string;
+  expectedLikelyHours: number;
+  calibrationStatus: CalibrationStatus;
+  sampleSize: number;
+  modelVersion: string;
+}
+
+export interface EffortVariance {
+  hours: number;
+  percent: number;
+}
+
+/**
+ * Compares the AI-native likely-hours estimate against this Base DU
+ * class's effort benchmark. Exactly one of productivityGain/
+ * positiveEffortOverrun is non-null (or both null when effort ≈ benchmark)
+ * - never both at once. productivityGain is surfaced for transparency and
+ * business analysis; it does NOT by itself reduce Commercial DU (see
+ * domain/commercial.ts NEGATIVE_EFFORT_ADJUSTMENT_ENABLED).
+ */
+export interface EffortAnalysis {
+  benchmark: EffortBenchmarkInfo;
+  predictedLikelyHours: number;
+  /** Signed: positive = effort above benchmark, negative = effort below benchmark (a productivity gain). */
+  variance: EffortVariance;
+  productivityGain: EffortVariance | null;
+  positiveEffortOverrun: EffortVariance | null;
+}
+
+/**
+ * REQUIRES_CLARIFICATION means effort confidence is too low to responsibly
+ * present a confident Commercial DU offer - the answer to low confidence is
+ * understanding the requirement better, not a blind risk markup (spec:
+ * "keine Scheinsicherheit durch Risikoaufschlag"). suggestedCommercialDU is
+ * still computed (for internal reference) even when this fires; the UI
+ * must surface the status prominently rather than presenting the number as
+ * a confident quote.
+ */
+export type CommercialEstimateStatus = "OK" | "REQUIRES_CLARIFICATION";
+
 /**
  * Output of the Commercial Model (D) - see scoring/commercialEngine.ts.
  * suggestedCommercialDU is null whenever baseDU is null (XXL - no Base DU to
  * adjust from). Deliberately NOT a time conversion: hours are one signal
- * among several (direct costs, innovation, risk), each dampened and
- * capped - never `hours / constant`.
+ * among several (direct costs, implementation novelty, risk), each
+ * dampened and capped - never `hours / constant`. With the asymmetric
+ * effort model, every adjustment here is >= 0, so Commercial DU is
+ * structurally floored at Base DU before commercialDUBeforeGuardrail is
+ * even computed - see the guardrail fields for the (currently
+ * unreachable-in-practice) technical bound underneath that floor.
  */
 export interface CommercialCalculation {
   baseDU: number | null;
@@ -399,6 +478,14 @@ export interface CommercialCalculation {
   rationale: string;
   adjustments: CommercialAdjustment[];
   calibrationStatus: CalibrationStatus;
+  effortAnalysis: EffortAnalysis | null;
+  /** Commercial DU after the mandatory Base-DU floor but before the technical guardrail clamp. */
+  commercialDUBeforeGuardrail: number | null;
+  /** Commercial DU after the technical guardrail clamp - equal to suggestedCommercialDU. */
+  commercialDUAfterGuardrail: number | null;
+  guardrailApplied: boolean;
+  guardrailReason: string | null;
+  estimateStatus: CommercialEstimateStatus;
 }
 
 /**
@@ -475,8 +562,13 @@ export interface DuResult {
   effortEstimate?: EffortEstimate;
   technologyComparison?: TechnologyAssessment[];
   directCosts?: DirectCostEstimate;
+  /** @deprecated commercial-du-v1 only - see ImplementationNoveltyAssessment/ReusableInnovationAssessment. */
   innovation?: InnovationAssessment;
-  /** The Commercial Model's (D) output - see scoring/commercialEngine.ts. Present only for calculationModelVersion "commercial-du-v1". */
+  /** Present only for calculationModelVersion "commercial-du-v2". */
+  implementationNovelty?: ImplementationNoveltyAssessment;
+  /** Present only for calculationModelVersion "commercial-du-v2". Display/persistence only - never feeds an automatic Commercial DU or price adjustment. */
+  reusableInnovationIp?: ReusableInnovationAssessment;
+  /** The Commercial Model's (D) output - see scoring/commercialEngine.ts. Present only for calculationModelVersion "commercial-du-v1"/"commercial-du-v2" (shape differs - see CommercialCalculation.effortAnalysis, which is v2-only). */
   commercialCalculation?: CommercialCalculation;
   /** Convenience mirror of commercialCalculation.suggestedCommercialDU, so callers that only need the number don't have to reach into the calculation object - see scoring/pricingEngine.ts, which uses exactly this field for DU_FIXED_PRICE. */
   commercialDevelopmentUnits?: number | null;
@@ -484,10 +576,14 @@ export interface DuResult {
    * Absent means this DuResult was computed by the original pre-technology-fit
    * engine ("legacy-v1") - only timeEstimate/alternativeApproaches are
    * populated in that case. "technology-fit-v2" has effortEstimate/
-   * technologyComparison but no Commercial Model fields.
-   * "commercial-du-v1" (current) has all of the above.
+   * technologyComparison but no Commercial Model fields. "commercial-du-v1"
+   * added Base DU vs Commercial DU with a flat 6h/DU effort reference.
+   * "commercial-du-v2" (current) replaces that flat reference with
+   * per-class effort benchmarks, an asymmetric effort adjustment, the
+   * implementationNovelty/reusableInnovationIp split, graduated risk tiers,
+   * and full guardrail transparency.
    */
-  calculationModelVersion?: "technology-fit-v2" | "commercial-du-v1";
+  calculationModelVersion?: "technology-fit-v2" | "commercial-du-v1" | "commercial-du-v2";
   /** @deprecated legacy-v1 only - see TimeEstimate. */
   timeEstimate?: TimeEstimate;
   /** @deprecated legacy-v1 only - see AlternativeApproachEstimate. */
@@ -716,11 +812,24 @@ export interface EffortPredictionSnapshot {
   predictedEffortMinHours: number;
   predictedEffortLikelyHours: number;
   predictedEffortMaxHours: number;
+  predictedEffortConfidence: number | null;
+  /** Which Base-DU-class effort benchmark this was compared against, and how it was calibrated at prediction time - see domain/commercial.ts BASE_DU_EFFORT_BENCHMARKS. */
+  effortBenchmark: EffortBenchmarkInfo | null;
+  /** The effort-specific line item from commercialCalculation.adjustments, frozen at prediction time. */
+  effortAdjustment: CommercialAdjustment | null;
   predictedTechnologyComparison: TechnologyAssessment[];
   directCostsPredicted: DirectCostEstimate | null;
+  /** @deprecated commercial-du-v1 snapshots only - see implementationNovelty/reusableInnovationIp. */
+  innovationLevel: InnovationLevel | null;
+  implementationNovelty: ImplementationNoveltyAssessment | null;
+  reusableInnovationIp: ReusableInnovationAssessment | null;
+  /** The risk-reserve line item from commercialCalculation.adjustments, frozen at prediction time. */
+  commercialRiskReserve: CommercialAdjustment | null;
+  commercialDUBeforeGuardrail: number | null;
+  commercialDUAfterGuardrail: number | null;
+  guardrailApplied: boolean | null;
   pricingStrategy: PricingStrategy;
   offeredPrice: number | null;
-  innovationLevel: InnovationLevel | null;
 }
 
 export interface ActualEffortRecord {

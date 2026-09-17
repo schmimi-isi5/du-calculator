@@ -106,7 +106,8 @@ requirementRouter.post("/score", asyncHandler(async (req, res) => {
       existingAssetLeverage: assessment.existingAssetLeverage,
       technologyNarratives: assessment.technologyNarratives,
       directCosts: assessment.directCosts,
-      innovation: assessment.innovation,
+      implementationNovelty: assessment.implementationNovelty,
+      reusableInnovationIp: assessment.reusableInnovationIp,
       pricingStrategy: config.pricingStrategy,
       pricingConfig: { billingRatePerHour: config.billingRatePerHour, pricePerDU: config.pricePerDU },
     });
@@ -248,6 +249,7 @@ requirementRouter.post("/:id/actual-effort", asyncHandler(async (req, res) => {
   // taken from the du_result as it stands right now, since a later re-score
   // would otherwise overwrite it in place.
   const du = result.duResult;
+  const commercialAdjustment = (label: string) => du?.commercialCalculation?.adjustments.find((a) => a.label === label) ?? null;
   const predictionSnapshot =
     du && du.effortEstimate
       ? {
@@ -257,11 +259,20 @@ requirementRouter.post("/:id/actual-effort", asyncHandler(async (req, res) => {
           predictedEffortMinHours: du.effortEstimate.minHours,
           predictedEffortLikelyHours: du.effortEstimate.likelyHours,
           predictedEffortMaxHours: du.effortEstimate.maxHours,
+          predictedEffortConfidence: du.effortEstimate.confidence,
+          effortBenchmark: du.commercialCalculation?.effortAnalysis?.benchmark ?? null,
+          effortAdjustment: commercialAdjustment("AI-native Aufwand vs. Effort Benchmark"),
           predictedTechnologyComparison: du.technologyComparison ?? [],
           directCostsPredicted: du.directCosts ?? null,
+          innovationLevel: du.innovation?.level ?? null,
+          implementationNovelty: du.implementationNovelty ?? null,
+          reusableInnovationIp: du.reusableInnovationIp ?? null,
+          commercialRiskReserve: commercialAdjustment("Kaufmännische Risikoreserve"),
+          commercialDUBeforeGuardrail: du.commercialCalculation?.commercialDUBeforeGuardrail ?? null,
+          commercialDUAfterGuardrail: du.commercialCalculation?.commercialDUAfterGuardrail ?? null,
+          guardrailApplied: du.commercialCalculation?.guardrailApplied ?? null,
           pricingStrategy: du.pricingStrategy,
           offeredPrice: du.price,
-          innovationLevel: du.innovation?.level ?? null,
         }
       : null;
 
