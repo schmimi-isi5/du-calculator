@@ -17,6 +17,8 @@ export type EffortLevel = "low" | "medium" | "high" | "xhigh" | "max";
 export interface QualityProfile {
   /** Effort for AIProvider.resolveRequirementContext calls (classification/extraction-shaped work). */
   resolutionEffort: EffortLevel;
+  /** Effort for AIProvider.challengeRequirement calls - separating goal from solution and judging reuse/optimization opportunities needs real judgment, closer to assessment than to plain classification. */
+  challengeEffort: EffortLevel;
   /** Effort for AIProvider.assessRequirement calls - the one step where nuanced judgment directly drives the DU result. */
   assessmentEffort: EffortLevel;
   /** How many clarification questions may be asked in a single round. */
@@ -30,6 +32,7 @@ export interface QualityProfile {
 export const QUALITY_PROFILES: Record<QualityLevel, QualityProfile> = {
   quick: {
     resolutionEffort: "low",
+    challengeEffort: "low",
     assessmentEffort: "medium",
     maxClarificationsPerRound: 1,
     maxResolutionRounds: 1,
@@ -38,6 +41,7 @@ export const QUALITY_PROFILES: Record<QualityLevel, QualityProfile> = {
   },
   standard: {
     resolutionEffort: "medium",
+    challengeEffort: "medium",
     assessmentEffort: "high",
     maxClarificationsPerRound: 2,
     maxResolutionRounds: 2,
@@ -46,6 +50,7 @@ export const QUALITY_PROFILES: Record<QualityLevel, QualityProfile> = {
   },
   thorough: {
     resolutionEffort: "high",
+    challengeEffort: "high",
     assessmentEffort: "xhigh",
     maxClarificationsPerRound: 3,
     maxResolutionRounds: 3,

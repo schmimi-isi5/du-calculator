@@ -71,6 +71,13 @@ interface RequirementContextRow extends QueryResultRow {
   id: string;
   snapshot_id: string;
   requirement: RequirementContext["requirement"];
+  original_requirement: RequirementContext["originalRequirement"] | null;
+  normalized_requirement: RequirementContext["normalizedRequirement"];
+  approved_requirement: RequirementContext["approvedRequirement"];
+  approval_status: string;
+  challenge_analysis: RequirementContext["challengeAnalysis"];
+  challenge_proposals: RequirementContext["challengeProposals"] | null;
+  requirement_preparation_version: string | null;
   quality_level: string;
   model: string;
   normalization: RequirementContext["normalization"];
@@ -155,6 +162,18 @@ function toRequirementContext(row: RequirementContextRow): RequirementContext {
     id: row.id,
     snapshotId: row.snapshot_id,
     requirement: row.requirement,
+    // A legacy row (created before requirement-challenge-v1) never captured
+    // these separately - falling back to `requirement` keeps it a valid,
+    // scorable context exactly as it already was (see db/migrate.ts and
+    // api/requirementRoutes.ts, which reads approvedRequirement with the
+    // same fallback).
+    originalRequirement: row.original_requirement ?? row.requirement,
+    normalizedRequirement: row.normalized_requirement ?? null,
+    approvedRequirement: row.approved_requirement ?? null,
+    approvalStatus: row.approval_status as RequirementContext["approvalStatus"],
+    challengeAnalysis: row.challenge_analysis ?? null,
+    challengeProposals: row.challenge_proposals ?? [],
+    requirementPreparationVersion: row.requirement_preparation_version,
     qualityLevel: row.quality_level as RequirementContext["qualityLevel"],
     model: row.model,
     normalization: row.normalization ?? null,
@@ -291,11 +310,21 @@ export class PostgresScoringStore implements ScoringStore {
   async saveRequirementContext(context: RequirementContext): Promise<void> {
     await pool.query(
       `INSERT INTO requirement_contexts
-         (id, snapshot_id, requirement, quality_level, model, normalization, known_facts, assumptions,
+         (id, snapshot_id, requirement, original_requirement, normalized_requirement, approved_requirement,
+          approval_status, challenge_analysis, challenge_proposals, requirement_preparation_version,
+          quality_level, model, normalization, known_facts, assumptions,
           missing_information, clarifications, status, resolution_rounds, error_message, created_at, updated_at)
-       VALUES ($1, $2, $3::jsonb, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb, $10::jsonb, $11, $12, $13, $14, $15)
+       VALUES ($1, $2, $3::jsonb, $4::jsonb, $5::jsonb, $6::jsonb, $7, $8::jsonb, $9::jsonb, $10, $11, $12, $13::jsonb,
+               $14::jsonb, $15::jsonb, $16::jsonb, $17::jsonb, $18, $19, $20, $21, $22)
        ON CONFLICT (id) DO UPDATE SET
          requirement = EXCLUDED.requirement,
+         original_requirement = EXCLUDED.original_requirement,
+         normalized_requirement = EXCLUDED.normalized_requirement,
+         approved_requirement = EXCLUDED.approved_requirement,
+         approval_status = EXCLUDED.approval_status,
+         challenge_analysis = EXCLUDED.challenge_analysis,
+         challenge_proposals = EXCLUDED.challenge_proposals,
+         requirement_preparation_version = EXCLUDED.requirement_preparation_version,
          normalization = EXCLUDED.normalization,
          known_facts = EXCLUDED.known_facts,
          assumptions = EXCLUDED.assumptions,
@@ -309,6 +338,13 @@ export class PostgresScoringStore implements ScoringStore {
         context.id,
         context.snapshotId,
         JSON.stringify(context.requirement),
+        JSON.stringify(context.originalRequirement),
+        context.normalizedRequirement !== null ? JSON.stringify(context.normalizedRequirement) : null,
+        context.approvedRequirement !== null ? JSON.stringify(context.approvedRequirement) : null,
+        context.approvalStatus,
+        context.challengeAnalysis !== null ? JSON.stringify(context.challengeAnalysis) : null,
+        JSON.stringify(context.challengeProposals),
+        context.requirementPreparationVersion,
         context.qualityLevel,
         context.model,
         context.normalization !== null ? JSON.stringify(context.normalization) : null,
@@ -327,7 +363,9 @@ export class PostgresScoringStore implements ScoringStore {
 
   async getRequirementContext(id: string): Promise<RequirementContext | undefined> {
     const result = await pool.query<RequirementContextRow>(
-      `SELECT id, snapshot_id, requirement, quality_level, model, normalization, known_facts, assumptions,
+      `SELECT id, snapshot_id, requirement, original_requirement, normalized_requirement, approved_requirement,
+              approval_status, challenge_analysis, challenge_proposals, requirement_preparation_version,
+              quality_level, model, normalization, known_facts, assumptions,
               missing_information, clarifications, status, resolution_rounds, error_message, created_at, updated_at
        FROM requirement_contexts WHERE id = $1`,
       [id],

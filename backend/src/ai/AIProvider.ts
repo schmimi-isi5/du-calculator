@@ -22,6 +22,8 @@ import type {
   RepositoryProfile,
   RepositorySnapshotMode,
   RequirementAssessment,
+  RequirementChallengeOutput,
+  RequirementChallengeProposal,
 } from "../domain/types.js";
 
 export interface RepositoryIdentity {
@@ -95,6 +97,29 @@ export interface AIProvider {
     usage: UsageContext,
     mode?: RepositorySnapshotMode,
   ): Promise<RequirementAssessment>;
+
+  /**
+   * Separates the underlying business goal from any proposed technical
+   * solution (Requirement Challenge & Optimization, requirement-challenge-v1)
+   * and proposes optimization/clarification proposals - never a DU, hours,
+   * price, or technology-fit percentage. existingProposals (already
+   * decided or still pending from a prior round) are passed in so the model
+   * can avoid re-proposing what was already rejected and can react to a
+   * user's edits. Runs only after the requirement context is fully resolved
+   * (no open clarifications from normalization).
+   */
+  challengeRequirement(
+    originalRequirement: Requirement,
+    normalizedRequirement: Requirement,
+    profile: RepositoryProfile,
+    context: RepositoryContext,
+    knowledge: ResolvedRequirementKnowledge,
+    existingProposals: RequirementChallengeProposal[],
+    qualityLevel: QualityLevel,
+    model: string,
+    usage: UsageContext,
+    mode?: RepositorySnapshotMode,
+  ): Promise<RequirementChallengeOutput>;
 }
 
 // Typed error classification (spec section 13) - lets calling code (and

@@ -697,10 +697,106 @@ export interface RequirementNormalization {
 
 export type RequirementContextStatus = "AWAITING_CLARIFICATION" | "RESOLVED" | "ERROR";
 
+// ---------------------------------------------------------------------------
+// Requirement Challenge & Optimization (requirement-challenge-v1) - a
+// fachlich stage between normalization and the five calculation models.
+// Separates the underlying business goal from any proposed technical
+// solution and surfaces reviewable proposals; never states a DU/effort/
+// price/technology-fit number. See backend/src/domain/requirementChallenge.ts
+// and backend/src/domain/types.ts for the full contract.
+// ---------------------------------------------------------------------------
+
+export const REQUIREMENT_CHALLENGE_TYPES = [
+  "UNCLEAR",
+  "ASSUMPTION",
+  "SOLUTION_CONSTRAINT",
+  "OPTIMIZATION",
+  "CONFLICT",
+  "SCOPE_REDUCTION",
+  "REUSE_OPPORTUNITY",
+  "ACCEPTANCE_IMPROVEMENT",
+] as const;
+export type RequirementChallengeType = (typeof REQUIREMENT_CHALLENGE_TYPES)[number];
+
+export const CHALLENGE_TYPE_LABELS: Record<RequirementChallengeType, string> = {
+  UNCLEAR: "Unklar",
+  ASSUMPTION: "Angenommen",
+  SOLUTION_CONSTRAINT: "Lösungsannahme",
+  OPTIMIZATION: "Optimierung",
+  CONFLICT: "Konflikt",
+  SCOPE_REDUCTION: "Umfang reduzierbar",
+  REUSE_OPPORTUNITY: "Wiederverwendung",
+  ACCEPTANCE_IMPROVEMENT: "Akzeptanzkriterium",
+};
+
+export type RequirementChallengeProposalStatus = "PENDING" | "ACCEPTED" | "REJECTED" | "EDITED" | "SUPERSEDED";
+
+export type ChallengeEvidenceSourceType =
+  | "ORIGINAL_REQUIREMENT"
+  | "NORMALIZED_REQUIREMENT"
+  | "KNOWN_CONSTRAINT"
+  | "USER_CLARIFICATION"
+  | "REPOSITORY"
+  | "TECHNICAL_PROJECT_PROFILE"
+  | "DERIVED"
+  | "ASSUMPTION";
+
+export interface ChallengeEvidence {
+  sourceType: ChallengeEvidenceSourceType;
+  reference: string;
+  description: string;
+  status: EvidenceStatus;
+}
+
+export type ChallengeImpactDirection = "LOWER" | "SAME" | "HIGHER" | "UNKNOWN";
+export type ChallengeMaintainabilityImpact = "BETTER" | "SAME" | "WORSE" | "UNKNOWN";
+
+export interface RequirementChallengeExpectedImpact {
+  scope: ChallengeImpactDirection;
+  complexity: ChallengeImpactDirection;
+  maintainability: ChallengeMaintainabilityImpact;
+  reuse: ChallengeImpactDirection;
+  implementationFreedom: ChallengeImpactDirection;
+}
+
+export interface RequirementChallengeProposal {
+  id: string;
+  type: RequirementChallengeType;
+  status: RequirementChallengeProposalStatus;
+  title: string;
+  originalText: string;
+  issue: string;
+  proposedChange: string;
+  rationale: string;
+  evidence: ChallengeEvidence[];
+  expectedImpact: RequirementChallengeExpectedImpact;
+  confidence: number;
+  editedChange: string | null;
+  decidedAt: string | null;
+  createdAt: string;
+}
+
+export type SolutionSpecificityLevel = "LOW" | "MEDIUM" | "HIGH";
+
+export interface RequirementChallengeAnalysis {
+  goal: string;
+  problemStatement: string;
+  solutionSpecificity: SolutionSpecificityLevel;
+}
+
+export type RequirementApprovalStatus = "DRAFT" | "CHALLENGE_IN_PROGRESS" | "READY_FOR_APPROVAL" | "APPROVED";
+
 export interface RequirementContext {
   id: string;
   snapshotId: string;
   requirement: Requirement;
+  originalRequirement: Requirement;
+  normalizedRequirement: Requirement | null;
+  approvedRequirement: Requirement | null;
+  approvalStatus: RequirementApprovalStatus;
+  challengeAnalysis: RequirementChallengeAnalysis | null;
+  challengeProposals: RequirementChallengeProposal[];
+  requirementPreparationVersion: string | null;
   qualityLevel: QualityLevel;
   model: string;
   normalization: RequirementNormalization | null;
@@ -716,6 +812,7 @@ export interface RequirementContext {
 }
 
 export type AssumptionAction = "CONFIRM" | "REJECT" | "EDIT";
+export type ChallengeProposalAction = "ACCEPT" | "REJECT" | "EDIT";
 
 /** Global counts for the overview Dashboard - see backend/src/domain/types.ts RepositoryStats. */
 export interface RepositoryStats {

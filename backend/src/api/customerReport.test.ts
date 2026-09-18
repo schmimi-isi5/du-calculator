@@ -158,4 +158,30 @@ describe("buildCustomerReport", () => {
       expect(Object.keys(tech).sort()).toEqual(["advantages", "disadvantages", "label", "relativeEffortFactor", "technology"].sort());
     }
   });
+
+  // Test O (requirement-challenge-v1 spec) - Requirement Challenge internals
+  // (proposals with their evidence/rationale/confidence, the goal/problem-
+  // statement analysis, solution specificity, conflicting alternatives) must
+  // never reach the public customer report. buildCustomerReport takes only a
+  // ScoringResult (see domain/types.ts), which never carries
+  // challengeProposals/challengeAnalysis/originalRequirement/
+  // normalizedRequirement/approvalStatus at all - those live exclusively on
+  // RequirementContext - so there is no leak path today. This regression
+  // test guards against that ever changing silently (e.g. someone later
+  // adding a "challengeAnalysis" field to ScoringResult and having
+  // buildCustomerReport spread it through unfiltered).
+  it("never leaks Requirement Challenge internals (proposals, evidence, rationale, goal analysis)", () => {
+    const report = buildCustomerReport(buildScoringResult())!;
+    const serialized = JSON.stringify(report);
+
+    expect(report).not.toHaveProperty("challengeProposals");
+    expect(report).not.toHaveProperty("challengeAnalysis");
+    expect(report).not.toHaveProperty("originalRequirement");
+    expect(report).not.toHaveProperty("normalizedRequirement");
+    expect(report).not.toHaveProperty("approvalStatus");
+    expect(serialized).not.toContain("solutionSpecificity");
+    expect(serialized).not.toContain("proposedChange");
+    expect(serialized).not.toContain("SOLUTION_CONSTRAINT");
+    expect(serialized).not.toContain("REUSE_OPPORTUNITY");
+  });
 });
