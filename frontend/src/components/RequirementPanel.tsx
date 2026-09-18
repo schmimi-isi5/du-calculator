@@ -1,9 +1,28 @@
 import { useEffect, useState } from "react";
 import { ApiError, getOllamaStatus, getSelectableModels } from "../api/client";
 import { AI_PROVIDER_LABELS, MODEL_CATEGORY_LABELS, QUALITY_LEVEL_META, QUALITY_LEVEL_ORDER } from "../types";
-import type { QualityLevel, SelectableModel } from "../types";
+import type { ModelCategory, QualityLevel, SelectableModel } from "../types";
 
 const AUTO_OPTION_ID = "auto";
+
+// Visual cost/quality cue per category, reusing the app's existing three
+// accent colors rather than inventing a new palette - premium (gold, "costs
+// more"), balanced/coding (teal, the default brand color), budget/
+// cost-performance/local (green, "cheap or free"). Shown as a left border
+// on each model button plus a small dot in its label.
+const CATEGORY_ACCENT: Record<ModelCategory, string> = {
+  premium: "var(--warn)",
+  balanced: "var(--teal)",
+  coding: "var(--teal)",
+  budget: "var(--green)",
+  "cost-performance": "var(--green)",
+  local: "var(--green)",
+};
+
+function formatModelPrice(m: SelectableModel): string | null {
+  if (m.inputPricePerMillion === undefined || m.outputPricePerMillion === undefined) return null;
+  return `$${m.inputPricePerMillion.toFixed(2)}/$${m.outputPricePerMillion.toFixed(2)} pro Mio. Token`;
+}
 
 interface Props {
   title: string;
@@ -76,21 +95,21 @@ export function RequirementPanel({
     // silently overwritten by re-running this default-selection effect.
   }, []);
 
-  const localModel = selectableModels.find((m) => m.local);
+  // Only models this deployment can actually call right now - no API key
+  // configured, or a local model whose Ollama server isn't reachable, are
+  // filtered out entirely instead of shown disabled, so the picker isn't
+  // cluttered with options nobody can pick. The count is still surfaced
+  // below so an operator knows more become available via the Einstellungen tab.
+  const usableModels = selectableModels.filter((m) => m.available && (!m.local || ollamaReachable !== false));
+  const hiddenCount = selectableModels.length - usableModels.length;
+  const localModel = usableModels.find((m) => m.local);
 
-  // A locally unreachable server is a *runtime* fact (spec section 10),
-  // independent of the registry entry's own (config-only) `available` flag -
-  // both must disable the button, but for a distinguishable reason.
   function isDisabled(m: SelectableModel): boolean {
-    if (!m.available) return true;
-    if (m.local && ollamaReachable === false) return true;
     if (privacyMode === "local-only" && !m.local) return true;
     return false;
   }
 
   function disabledReason(m: SelectableModel): string | undefined {
-    if (!m.available) return "Kein API-Key für diesen Provider konfiguriert.";
-    if (m.local && ollamaReachable === false) return "Lokaler Ollama-Server nicht erreichbar.";
     if (privacyMode === "local-only" && !m.local) return "Nur lokal: Cloud-Modelle sind deaktiviert.";
     return undefined;
   }
@@ -117,6 +136,7 @@ export function RequirementPanel({
       <label htmlFor="reqDescription">Beschreibung</label>
       <textarea
         id="reqDescription"
+        className="textarea-large"
         value={description}
         onChange={(e) => onChangeDescription(e.target.value)}
         placeholder="Was soll umgesetzt werden, und warum? Je konkreter, desto weniger Rückfragen."
@@ -127,6 +147,7 @@ export function RequirementPanel({
           <label htmlFor="reqAcceptance">Akzeptanzkriterien (eine pro Zeile)</label>
           <textarea
             id="reqAcceptance"
+            className="textarea-large"
             value={acceptanceCriteria}
             onChange={(e) => onChangeAcceptanceCriteria(e.target.value)}
           />
@@ -135,6 +156,7 @@ export function RequirementPanel({
           <label htmlFor="reqConstraints">Randbedingungen (eine pro Zeile, optional)</label>
           <textarea
             id="reqConstraints"
+            className="textarea-large"
             value={constraints}
             onChange={(e) => onChangeConstraints(e.target.value)}
             placeholder="Datenschutz, Performance, Ausschlüsse …"
@@ -161,7 +183,7 @@ export function RequirementPanel({
         })}
       </div>
 
-      {selectableModels.length > 0 && (
+      {usableModels.length > 0 && (
         <>
           <label htmlFor="modelPicker">Modell</label>
           <div className="quality-level-picker" id="modelPicker">
@@ -174,16 +196,16 @@ export function RequirementPanel({
               <span className="quality-level-option-label">Auto</span>
               <span className="quality-level-option-description">Optimales Modell automatisch auswählen.</span>
             </button>
-            {selectableModels.map((m) => {
+            {usableModels.map((m) => {
               const disabled = loading || isDisabled(m);
               const reason = disabledReason(m);
+              const price = formatModelPrice(m);
               const subtitle = [
                 // OpenRouter's own model catalog isn't fixed, so its
                 // display name alone doesn't say where the model runs -
                 // unlike e.g. "Claude Opus 5", which already implies Anthropic.
                 m.provider === "openrouter" ? AI_PROVIDER_LABELS.openrouter : null,
-                MODEL_CATEGORY_LABELS[m.category],
-                m.local ? "keine API-Kosten" : null,
+                m.local ? "keine API-Kosten" : price,
               ]
                 .filter(Boolean)
                 .join(" · ");
@@ -195,23 +217,41 @@ export function RequirementPanel({
                   onClick={() => onChangeModel(m.id)}
                   disabled={disabled}
                   title={reason}
+                  style={{ borderLeft: `3px solid ${CATEGORY_ACCENT[m.category]}` }}
                 >
-                  <span className="quality-level-option-label">{m.displayName}</span>
+                  <span className="quality-level-option-label">
+                    <span className="model-category-dot" style={{ background: CATEGORY_ACCENT[m.category] }} />
+                    {m.displayName}
+                    <span className="model-category-badge">{MODEL_CATEGORY_LABELS[m.category]}</span>
+                  </span>
                   <span className="quality-level-option-description">{reason ?? subtitle}</span>
                 </button>
               );
             })}
           </div>
+          {hiddenCount > 0 && (
+            <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>
+              {hiddenCount} weitere{hiddenCount === 1 ? "s" : ""} Modell{hiddenCount === 1 ? "" : "e"} ohne konfigurierten
+              Zugang ausgeblendet - einrichtbar unter "Einstellungen".
+            </p>
+          )}
 
-          <label className="privacy-mode-toggle">
-            <input
-              type="checkbox"
-              checked={privacyMode === "local-only"}
-              onChange={(e) => handleTogglePrivacyMode(e.target.checked)}
-              disabled={loading || !localModel}
-            />
-            Nur lokal (kein Cloud-Anbieter) - Daten verlassen diesen Rechner nie
-          </label>
+          <div className="privacy-mode-callout">
+            <label>
+              <input
+                type="checkbox"
+                checked={privacyMode === "local-only"}
+                onChange={(e) => handleTogglePrivacyMode(e.target.checked)}
+                disabled={loading || !localModel}
+              />
+              <span>
+                <strong>🔒 Nur lokal verarbeiten</strong>
+                <span className="privacy-mode-callout-subtitle">
+                  Kein Cloud-Anbieter - Daten verlassen diesen Rechner nie.
+                </span>
+              </span>
+            </label>
+          </div>
         </>
       )}
 

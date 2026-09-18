@@ -659,60 +659,71 @@ export function ManagementReport({ result }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {du.technologyComparison.map((tech) => {
-                  const isBaseline = tech.technology === "AI_NATIVE";
-                  const percent = Math.round(tech.relativeEffortFactor * 100);
-                  const contributionsTitle = tech.contributions
-                    .map((c) => `${c.label}: ${c.direction === "decreases" ? "-" : "+"}${Math.abs(c.contribution)}`)
-                    .join("\n");
-                  return (
-                    <tr key={tech.technology} className={isBaseline ? "baseline" : ""}>
-                      <td title={contributionsTitle}>
-                        {tech.label}
-                        {tech.varianceFlag === "HIGH_VARIANCE_COMPARISON" && (
-                          <span
-                            title="Großer Technologieunterschied prognostiziert - Treiber prüfen (siehe Tooltip auf dem Namen)."
-                            style={{ marginLeft: 6, cursor: "help" }}
-                          >
-                            ⚠️
-                          </span>
-                        )}
-                      </td>
-                      <td>
-                        <div className="effort-bar-cell">
-                          <div className="effort-bar-track">
-                            <div
-                              className={`effort-bar-fill ${
-                                isBaseline ? "baseline" : percent > 100 ? "over-baseline" : ""
-                              }`}
-                              style={{ width: `${Math.min(percent, 100)}%` }}
-                            />
+                {(() => {
+                  // The bar's WIDTH must reflect the actual proportional
+                  // difference between technologies - clamping every value
+                  // above 100% to a full-width bar (the old behavior) made
+                  // 117%, 153%, and 170% all look identical. Scaling against
+                  // the largest value in THIS comparison instead keeps the
+                  // biggest bar full-width and everyone else proportionally
+                  // shorter - the percentage label still shows the exact number.
+                  const maxPercent = Math.max(100, ...du.technologyComparison!.map((t) => Math.round(t.relativeEffortFactor * 100)));
+                  return du.technologyComparison!.map((tech) => {
+                    const isBaseline = tech.technology === "AI_NATIVE";
+                    const percent = Math.round(tech.relativeEffortFactor * 100);
+                    const barWidth = (percent / maxPercent) * 100;
+                    const contributionsTitle = tech.contributions
+                      .map((c) => `${c.label}: ${c.direction === "decreases" ? "-" : "+"}${Math.abs(c.contribution)}`)
+                      .join("\n");
+                    return (
+                      <tr key={tech.technology} className={isBaseline ? "baseline" : ""}>
+                        <td title={contributionsTitle}>
+                          {tech.label}
+                          {tech.varianceFlag === "HIGH_VARIANCE_COMPARISON" && (
+                            <span
+                              title="Großer Technologieunterschied prognostiziert - Treiber prüfen (siehe Tooltip auf dem Namen)."
+                              style={{ marginLeft: 6, cursor: "help" }}
+                            >
+                              ⚠️
+                            </span>
+                          )}
+                        </td>
+                        <td>
+                          <div className="effort-bar-cell">
+                            <div className="effort-bar-track">
+                              <div
+                                className={`effort-bar-fill ${
+                                  isBaseline ? "baseline" : percent > 100 ? "over-baseline" : ""
+                                }`}
+                                style={{ width: `${barWidth}%` }}
+                              />
+                            </div>
+                            <span className="effort-bar-label">{percent}%</span>
                           </div>
-                          <span className="effort-bar-label">{percent}%</span>
-                        </div>
-                      </td>
-                      {view === "internal" && <td>{tech.estimatedHours.likelyHours.toFixed(0)} Std.</td>}
-                      {view === "internal" && <td>{Math.round(tech.fit * 100)}%</td>}
-                      {view === "internal" && (
-                        <td>{tech.assetLeverage !== null ? `${Math.round(tech.assetLeverage * 100)}%` : "unbekannt"}</td>
-                      )}
-                      <td>
-                        <ul className="tech-advantage-list">
-                          {tech.advantages.map((a, i) => (
-                            <li key={i}>{a}</li>
-                          ))}
-                        </ul>
-                      </td>
-                      <td>
-                        <ul className="tech-disadvantage-list">
-                          {tech.disadvantages.map((d, i) => (
-                            <li key={i}>{d}</li>
-                          ))}
-                        </ul>
-                      </td>
-                    </tr>
-                  );
-                })}
+                        </td>
+                        {view === "internal" && <td>{tech.estimatedHours.likelyHours.toFixed(0)} Std.</td>}
+                        {view === "internal" && <td>{Math.round(tech.fit * 100)}%</td>}
+                        {view === "internal" && (
+                          <td>{tech.assetLeverage !== null ? `${Math.round(tech.assetLeverage * 100)}%` : "unbekannt"}</td>
+                        )}
+                        <td>
+                          <ul className="tech-advantage-list">
+                            {tech.advantages.map((a, i) => (
+                              <li key={i}>{a}</li>
+                            ))}
+                          </ul>
+                        </td>
+                        <td>
+                          <ul className="tech-disadvantage-list">
+                            {tech.disadvantages.map((d, i) => (
+                              <li key={i}>{d}</li>
+                            ))}
+                          </ul>
+                        </td>
+                      </tr>
+                    );
+                  });
+                })()}
               </tbody>
             </table>
           </div>

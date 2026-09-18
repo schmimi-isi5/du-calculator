@@ -13,6 +13,13 @@ export function HistoryPanel({ selectedId, onSelect, refreshToken }: Props) {
   const [entries, setEntries] = useState<ScoringHistoryEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Expanded by default only when nothing is picked yet (including on
+  // mount, e.g. arriving here fresh vs. via the Dashboard's "letzte
+  // Bewertungen" link with a selection already made). Once a row is
+  // selected, the list collapses to a one-line summary so the
+  // Management-Report becomes visible right away instead of requiring a
+  // scroll past the whole table - "Andere Bewertung wählen" brings it back.
+  const [expanded, setExpanded] = useState(selectedId === null);
 
   useEffect(() => {
     let cancelled = false;
@@ -34,9 +41,23 @@ export function HistoryPanel({ selectedId, onSelect, refreshToken }: Props) {
     // refreshToken bump triggers a re-fetch after a new scoring completes.
   }, [refreshToken]);
 
+  function handleSelect(id: string) {
+    onSelect(id);
+    setExpanded(false);
+  }
+
+  const selectedEntry = entries.find((e) => e.id === selectedId) ?? null;
+
   return (
     <div className="card">
-      <h2>Historie · Requirement → DU Entscheidungen</h2>
+      <div className="actions" style={{ marginTop: 0, justifyContent: "space-between" }}>
+        <h2 style={{ margin: 0 }}>Historie · Requirement → DU Entscheidungen</h2>
+        {entries.length > 0 && (
+          <button className="btn" onClick={() => setExpanded((e) => !e)}>
+            {expanded ? "Liste einklappen" : "Andere Bewertung wählen"}
+          </button>
+        )}
+      </div>
 
       {loading && <p style={{ fontSize: 13, color: "var(--muted)" }}>Lade Historie…</p>}
       {error && <div className="notice error">{error}</div>}
@@ -44,7 +65,17 @@ export function HistoryPanel({ selectedId, onSelect, refreshToken }: Props) {
         <p style={{ fontSize: 13, color: "var(--muted)" }}>Noch keine gespeicherten Bewertungen.</p>
       )}
 
-      {entries.length > 0 && (
+      {!expanded && selectedEntry && (
+        <div className="history-selected-summary">
+          <span className="history-repo">{selectedEntry.requirementTitle}</span>
+          <span className={`status-pill ${SCORING_STATUS_META[selectedEntry.status].variant}`}>
+            {SCORING_STATUS_META[selectedEntry.status].label}
+          </span>
+          <span style={{ color: "var(--muted)" }}>{new Date(selectedEntry.createdAt).toLocaleString("de-DE")}</span>
+        </div>
+      )}
+
+      {expanded && entries.length > 0 && (
         <div className="history-table-wrap">
           <table className="history-table">
             <thead>
@@ -65,7 +96,7 @@ export function HistoryPanel({ selectedId, onSelect, refreshToken }: Props) {
                   <tr
                     key={entry.id}
                     className={entry.id === selectedId ? "selected" : ""}
-                    onClick={() => onSelect(entry.id)}
+                    onClick={() => handleSelect(entry.id)}
                   >
                     <td>{new Date(entry.createdAt).toLocaleString("de-DE")}</td>
                     <td title={entry.requirementTitle}>
