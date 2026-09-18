@@ -43,6 +43,18 @@ export type RequirementApprovalStatus = (typeof REQUIREMENT_APPROVAL_STATUSES)[n
 export const REQUIREMENT_PREPARATION_VERSION = "requirement-challenge-v1" as const;
 
 /**
+ * Which part of the Requirement a proposal actually rewrites once accepted
+ * (see scoring/requirementChallengeEngine.ts buildOptimizedRequirement).
+ * Declared explicitly by the AI rather than inferred from string matching
+ * alone - a proposal about a named technology can concern either the
+ * free-text description (no discrete list entry to touch) or a concrete
+ * ACCEPTANCE_CRITERION/CONSTRAINT list entry (which must then actually be
+ * rewritten/removed, not just contradicted by a note elsewhere).
+ */
+export const REQUIREMENT_CHALLENGE_TARGET_FIELDS = ["DESCRIPTION", "ACCEPTANCE_CRITERION", "CONSTRAINT"] as const;
+export type RequirementChallengeTargetField = (typeof REQUIREMENT_CHALLENGE_TARGET_FIELDS)[number];
+
+/**
  * A Work Package's "solution specificity" analogue for the whole
  * requirement: how much of the text is already a concrete technical
  * solution rather than a business goal. Purely descriptive - never drives a

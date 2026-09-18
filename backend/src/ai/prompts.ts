@@ -294,6 +294,14 @@ Separate the business goal from any proposed technical solution - this is the ce
 - When unsure whether something was meant as a firm requirement or just an example/suggestion, do not guess - either propose it as SOLUTION_CONSTRAINT with your uncertainty reflected in a moderate confidence, or raise it as a missing-information gap if the ambiguity is material enough (see the clarification rules below).
 `.trim();
 
+const CHALLENGE_TARGET_FIELD_RULE = `
+Rewriting the requirement correctly once a proposal is accepted depends entirely on "targetField" and "originalText" being precise - get this wrong and the accepted change silently fails to update the requirement:
+- The same idea (e.g. "must use the existing vector database") often appears BOTH in the free-text description AND as its own, separately-worded entry in the Acceptance Criteria or Constraints list below. Look for that discrete list entry - it is the thing that actually gets scored/estimated later, so it is almost always the more important one to target.
+- If a matching Acceptance Criteria or Constraints entry exists, set targetField to ACCEPTANCE_CRITERION or CONSTRAINT accordingly, and set originalText to an EXACT, character-for-character copy of that list entry - not a paraphrase or quote from the description. Copying it wrong (even a small wording difference) means the application cannot find and rewrite it.
+- Only set targetField to DESCRIPTION when there genuinely is no corresponding Acceptance Criteria/Constraints entry - i.e. the concern is purely about the free-text prose itself.
+- A single underlying issue may require two proposals if it appears in both the description AND a list entry with materially different implications - do not assume fixing one automatically fixes the other.
+`.trim();
+
 const CHALLENGE_REPOSITORY_RULE = `
 Repository evidence as input to Challenge (EXISTING_SYSTEM mode) - use the repository profile and file contents already provided above the same way the Assumption & Clarification stage does, to recognize REUSE_OPPORTUNITY and OPTIMIZATION proposals:
 - A requirement asking to build something that already exists (a service, a data model, an auth mechanism, an integration) is a REUSE_OPPORTUNITY - cite the real evidence (file path/symbol) that shows it already exists.
@@ -361,6 +369,8 @@ ${QUALITY_PROFILES[qualityLevel].rationaleGuidance}
 ${PROBLEM_VS_SOLUTION_RULE}
 
 ${CHALLENGE_TYPE_RULE}
+
+${CHALLENGE_TARGET_FIELD_RULE}
 
 ${CHALLENGE_REPOSITORY_RULE}
 

@@ -28,6 +28,7 @@ import type {
   ChallengeMaintainabilityImpact,
   RequirementApprovalStatus,
   RequirementChallengeProposalStatus,
+  RequirementChallengeTargetField,
   RequirementChallengeType,
   SolutionSpecificityLevel,
 } from "./requirementChallenge.js";
@@ -988,6 +989,7 @@ export type {
   ChallengeMaintainabilityImpact,
   RequirementApprovalStatus,
   RequirementChallengeProposalStatus,
+  RequirementChallengeTargetField,
   RequirementChallengeType,
   SolutionSpecificityLevel,
 } from "./requirementChallenge.js";
@@ -997,6 +999,7 @@ export {
   CHALLENGE_MAINTAINABILITY_IMPACTS,
   REQUIREMENT_APPROVAL_STATUSES,
   REQUIREMENT_CHALLENGE_PROPOSAL_STATUSES,
+  REQUIREMENT_CHALLENGE_TARGET_FIELDS,
   REQUIREMENT_CHALLENGE_TYPES,
   REQUIREMENT_PREPARATION_VERSION,
   SOLUTION_SPECIFICITY_LEVELS,
@@ -1022,8 +1025,22 @@ export interface RequirementChallengeExpectedImpact {
 export interface RequirementChallengeProposalInput {
   type: RequirementChallengeType;
   title: string;
-  /** The exact (or closely paraphrased) source text this proposal is about - used both for display and, for ACCEPTANCE_IMPROVEMENT/SOLUTION_CONSTRAINT, to locate the matching acceptanceCriteria/constraints entry (see buildOptimizedRequirement). */
+  /**
+   * The exact source text this proposal is about - when `targetField` is
+   * ACCEPTANCE_CRITERION or CONSTRAINT, this MUST be copied verbatim from
+   * that exact list entry (not a paraphrase from the free-text description),
+   * so buildOptimizedRequirement can locate and rewrite it deterministically
+   * once accepted; for DESCRIPTION it is a faithful excerpt of the prose.
+   */
   originalText: string;
+  /**
+   * Which part of the Requirement this proposal actually rewrites once
+   * accepted (see scoring/requirementChallengeEngine.ts
+   * buildOptimizedRequirement) - optional only for backward compatibility
+   * with proposals persisted before this field existed (treated as unknown/
+   * DESCRIPTION-shaped there); every new AI output always sets it.
+   */
+  targetField?: RequirementChallengeTargetField;
   issue: string;
   proposedChange: string;
   rationale: string;

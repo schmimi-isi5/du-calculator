@@ -119,20 +119,51 @@ const CHALLENGE_TYPE_NOTE_LABELS: Record<RequirementChallengeType, string> = {
 };
 
 /**
+ * Locates the list entry a proposal's `originalText` refers to. Exact match
+ * (trimmed, case-insensitive) first; a substring-containment fallback
+ * second, for when the AI's copy differs by trivial punctuation/whitespace
+ * from the list entry it was told to copy verbatim - deliberately NOT
+ * semantic/embedding matching (kept pragmatic per spec section 33), and only
+ * ever used to locate one of a requirement's own short, discrete list
+ * entries, where a false positive is very unlikely.
+ */
+function findMatchingIndex(list: string[], originalText: string): number {
+  const needle = originalText.trim().toLowerCase();
+  if (needle.length === 0) return -1;
+
+  const exactIdx = list.findIndex((entry) => entry.trim().toLowerCase() === needle);
+  if (exactIdx >= 0) return exactIdx;
+
+  return list.findIndex((entry) => {
+    const haystack = entry.trim().toLowerCase();
+    return haystack.length > 0 && (haystack.includes(needle) || needle.includes(haystack));
+  });
+}
+
+/**
  * Deterministically rebuilds the working Requirement from the normalized
  * base plus every currently ACCEPTED/EDITED proposal - recomputed from
  * scratch every time a decision changes (never incrementally mutated), so
  * toggling a decision back and forth can never accumulate duplicate notes.
  *
- * ACCEPTANCE_IMPROVEMENT proposals replace (or add) a discrete
- * acceptanceCriteria entry - safe because that array is already a list of
- * separate items, not continuous prose. A proposal whose originalText
- * exactly matches an existing constraint is likewise replaced in place.
- * Everything else (a general goal/scope refinement, a solution constraint
- * being loosened, a scope reduction, ...) is appended as an explicitly
- * labeled note rather than spliced into the free-text description - the
- * original customer wording must never be silently rewritten (spec
- * section 5: "Original Requirement ist unveränderliche Quelle").
+ * `targetField` (set by every AI-produced proposal, see
+ * ai/prompts.ts CHALLENGE_TARGET_FIELD_RULE) is the authoritative signal for
+ * which part of the requirement actually gets rewritten: ACCEPTANCE_CRITERION/
+ * CONSTRAINT replace (or add) the matching discrete list entry - safe
+ * because those arrays are already lists of separate items, not continuous
+ * prose - so an accepted "the requirement text doesn't have to mandate the
+ * existing vector database" proposal actually rewrites the Randbedingung
+ * that says so, not just the free-text description (a real gap found via
+ * live use: a proposal's originalText was a paraphrase from the description
+ * rather than the constraint's own wording, so it silently missed the
+ * constraint and only left a note - findMatchingIndex's substring fallback
+ * and the stronger prompt instruction both address this). Only DESCRIPTION
+ * (or a legacy proposal persisted before targetField existed, matched via
+ * the old ACCEPTANCE_IMPROVEMENT-type / exact-constraint-match heuristic) is
+ * appended as an explicitly labeled note rather than spliced into the
+ * free-text description - the original customer wording must never be
+ * silently rewritten (spec section 5: "Original Requirement ist
+ * unveränderliche Quelle").
  */
 export function buildOptimizedRequirement(base: Requirement, proposals: RequirementChallengeProposal[]): Requirement {
   let acceptanceCriteria = [...base.acceptanceCriteria];
@@ -143,17 +174,29 @@ export function buildOptimizedRequirement(base: Requirement, proposals: Requirem
     if (proposal.status !== "ACCEPTED" && proposal.status !== "EDITED") continue;
     const changeText = resolvedChangeText(proposal);
     const originalText = proposal.originalText.trim();
+    const targetField = proposal.targetField;
 
-    if (proposal.type === "ACCEPTANCE_IMPROVEMENT") {
-      const idx = acceptanceCriteria.findIndex((c) => c.trim() === originalText);
+    if (targetField === "ACCEPTANCE_CRITERION" || (!targetField && proposal.type === "ACCEPTANCE_IMPROVEMENT")) {
+      const idx = findMatchingIndex(acceptanceCriteria, originalText);
       acceptanceCriteria = idx >= 0 ? acceptanceCriteria.map((c, i) => (i === idx ? changeText : c)) : [...acceptanceCriteria, changeText];
       continue;
     }
 
-    const constraintIdx = constraints.findIndex((c) => c.trim() === originalText);
-    if (constraintIdx >= 0) {
-      constraints = constraints.map((c, i) => (i === constraintIdx ? changeText : c));
+    if (targetField === "CONSTRAINT") {
+      const idx = findMatchingIndex(constraints, originalText);
+      constraints = idx >= 0 ? constraints.map((c, i) => (i === idx ? changeText : c)) : [...constraints, changeText];
       continue;
+    }
+
+    if (!targetField) {
+      // Legacy proposals predating targetField: only ever replace an exact
+      // constraint match (never add) - narrower than the new CONSTRAINT
+      // path above, since we can't be sure of a legacy proposal's intent.
+      const legacyIdx = constraints.findIndex((c) => c.trim() === originalText);
+      if (legacyIdx >= 0) {
+        constraints = constraints.map((c, i) => (i === legacyIdx ? changeText : c));
+        continue;
+      }
     }
 
     notes.push(`[${CHALLENGE_TYPE_NOTE_LABELS[proposal.type]}] ${changeText}`);

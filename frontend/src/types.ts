@@ -759,12 +759,22 @@ export interface RequirementChallengeExpectedImpact {
   implementationFreedom: ChallengeImpactDirection;
 }
 
+export type RequirementChallengeTargetField = "DESCRIPTION" | "ACCEPTANCE_CRITERION" | "CONSTRAINT";
+
+export const CHALLENGE_TARGET_FIELD_LABELS: Record<RequirementChallengeTargetField, string> = {
+  DESCRIPTION: "Beschreibung",
+  ACCEPTANCE_CRITERION: "Akzeptanzkriterium",
+  CONSTRAINT: "Randbedingung",
+};
+
 export interface RequirementChallengeProposal {
   id: string;
   type: RequirementChallengeType;
   status: RequirementChallengeProposalStatus;
   title: string;
   originalText: string;
+  /** Which part of the requirement this proposal rewrites once accepted - absent on a proposal persisted before this field existed. */
+  targetField?: RequirementChallengeTargetField;
   issue: string;
   proposedChange: string;
   rationale: string;

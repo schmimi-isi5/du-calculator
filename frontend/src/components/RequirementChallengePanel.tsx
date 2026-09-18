@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CHALLENGE_TYPE_LABELS } from "../types";
+import { CHALLENGE_TARGET_FIELD_LABELS, CHALLENGE_TYPE_LABELS } from "../types";
 import type {
   ChallengeProposalAction,
   RequirementChallengeExpectedImpact,
@@ -208,6 +208,11 @@ function ProposalCard({
           {index}. {proposal.title}
         </strong>
         <span className="criticality-badge MEDIUM">{CHALLENGE_TYPE_LABELS[proposal.type]}</span>
+        {proposal.targetField && (
+          <span className="criticality-badge LOW">
+            Betrifft: {CHALLENGE_TARGET_FIELD_LABELS[proposal.targetField]}
+          </span>
+        )}
         <span className="assumption-status-label">{proposal.status}</span>
       </div>
 

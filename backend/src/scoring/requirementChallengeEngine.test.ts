@@ -216,6 +216,87 @@ describe("buildOptimizedRequirement", () => {
     expect(result.constraints).toEqual(["Muss dialogübergreifenden Kontext bereitstellen (Technologie offen)."]);
   });
 
+  it("targetField=CONSTRAINT rewrites the exactly matching constraint, not just the description (regression: accepting a solution-constraint proposal must actually update Randbedingungen, not only the free text)", () => {
+    const base = requirement({
+      description: "Das Team bestätigte die Anforderung und will sie über eine bestehende Vektordatenbank umsetzen.",
+      constraints: ["Die Implementierung muss die vorhandene Vektordatenbank nutzen."],
+    });
+    const proposal: RequirementChallengeProposal = {
+      ...proposalInput({
+        targetField: "CONSTRAINT",
+        originalText: "Die Implementierung muss die vorhandene Vektordatenbank nutzen.",
+        proposedChange: "Die Implementierung muss dialogübergreifenden Kontext bereitstellen (Speichertechnologie nicht festgelegt).",
+      }),
+      id: "p1",
+      status: "ACCEPTED",
+      editedChange: null,
+      decidedAt: "now",
+      createdAt: "now",
+    };
+
+    const result = buildOptimizedRequirement(base, [proposal]);
+
+    expect(result.constraints).toEqual([
+      "Die Implementierung muss dialogübergreifenden Kontext bereitstellen (Speichertechnologie nicht festgelegt).",
+    ]);
+    // The original description is still preserved verbatim - only the
+    // discrete constraint entry is rewritten, no note-only fallback.
+    expect(result.description).toBe(base.description);
+  });
+
+  it("targetField=CONSTRAINT falls back to a substring match when originalText isn't a byte-identical copy of the constraint", () => {
+    const base = requirement({ constraints: ["Die Implementierung muss die vorhandene Vektordatenbank nutzen."] });
+    const proposal: RequirementChallengeProposal = {
+      ...proposalInput({
+        targetField: "CONSTRAINT",
+        originalText: "die Implementierung muss die vorhandene Vektordatenbank nutzen", // trailing period + case differ
+        proposedChange: "Technologie ist nicht festgelegt.",
+      }),
+      id: "p1",
+      status: "ACCEPTED",
+      editedChange: null,
+      decidedAt: "now",
+      createdAt: "now",
+    };
+
+    const result = buildOptimizedRequirement(base, [proposal]);
+
+    expect(result.constraints).toEqual(["Technologie ist nicht festgelegt."]);
+  });
+
+  it("targetField=CONSTRAINT appends a new constraint when genuinely no existing entry matches, instead of silently falling through to a description note", () => {
+    const base = requirement({ constraints: ["Muss DSGVO-konform sein."] });
+    const proposal: RequirementChallengeProposal = {
+      ...proposalInput({ targetField: "CONSTRAINT", originalText: "Ganz neue Randbedingung", proposedChange: "Muss barrierefrei sein." }),
+      id: "p1",
+      status: "ACCEPTED",
+      editedChange: null,
+      decidedAt: "now",
+      createdAt: "now",
+    };
+
+    const result = buildOptimizedRequirement(base, [proposal]);
+
+    expect(result.constraints).toEqual(["Muss DSGVO-konform sein.", "Muss barrierefrei sein."]);
+  });
+
+  it("targetField=DESCRIPTION always appends a note, even when the type would otherwise match ACCEPTANCE_IMPROVEMENT's legacy fallback", () => {
+    const base = requirement({ acceptanceCriteria: ["Ein Kriterium."] });
+    const proposal: RequirementChallengeProposal = {
+      ...proposalInput({ type: "ACCEPTANCE_IMPROVEMENT", targetField: "DESCRIPTION", originalText: "Ein Kriterium.", proposedChange: "Präzisierte Formulierung." }),
+      id: "p1",
+      status: "ACCEPTED",
+      editedChange: null,
+      decidedAt: "now",
+      createdAt: "now",
+    };
+
+    const result = buildOptimizedRequirement(base, [proposal]);
+
+    expect(result.acceptanceCriteria).toEqual(["Ein Kriterium."]);
+    expect(result.description).toContain("Präzisierte Formulierung.");
+  });
+
   it("never appears in numeric form (Test M: no DU/hours/price/percentage in optimization output)", () => {
     const base = requirement();
     const proposal: RequirementChallengeProposal = { ...proposalInput(), id: "p1", status: "ACCEPTED", editedChange: null, decidedAt: "now", createdAt: "now" };
