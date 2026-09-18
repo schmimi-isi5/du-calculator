@@ -181,10 +181,11 @@ main {
     grid-template-columns: 1fr;
   }
 
-  /* The hero sits below the main content in this single-column layout, so
-     sticking it to the viewport would make it overlap whatever is
-     scrolling past it instead of following the two-column reading order. */
-  .hero {
+  /* The hero/report-aside sit below the main content in this single-column
+     layout, so sticking them to the viewport would make them overlap
+     whatever is scrolling past instead of following the reading order. */
+  .hero,
+  .report-aside {
     position: static;
   }
 }
@@ -195,6 +196,13 @@ main {
   border-radius: 14px;
   padding: 18px;
   margin-bottom: 16px;
+}
+
+/* Management-Report's right-hand price/effort summary - sticky like .hero,
+   so it stays visible while the (often long) left-hand narrative scrolls. */
+.report-aside {
+  position: sticky;
+  top: 12px;
 }
 
 .card h2 {

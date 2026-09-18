@@ -111,71 +111,42 @@ export function ManagementReport({ result }: Props) {
   const technologyAlternativesAreClose = bestTechnologyAlternative === null || bestTechnologyAlternative.relativeEffortFactor >= 0.85;
 
   return (
-    <div className="card report">
-      <div className="actions" style={{ marginTop: 0, justifyContent: "space-between" }}>
-        <h2 style={{ margin: 0 }}>Management-Report</h2>
-        <div className="view-toggle">
-          <button className={view === "customer" ? "active" : ""} onClick={() => setView("customer")}>
-            Kunde
-          </button>
-          <button className={view === "internal" ? "active" : ""} onClick={() => setView("internal")}>
-            Intern
-          </button>
+    <div className="report">
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="actions" style={{ marginTop: 0, justifyContent: "space-between" }}>
+          <h2 style={{ margin: 0 }}>Management-Report</h2>
+          <div className="view-toggle">
+            <button className={view === "customer" ? "active" : ""} onClick={() => setView("customer")}>
+              Kunde
+            </button>
+            <button className={view === "internal" ? "active" : ""} onClick={() => setView("internal")}>
+              Intern
+            </button>
+          </div>
         </div>
+
+        <div className="report-header">
+          <h3>{result.requirement.title}</h3>
+          <p>{result.requirement.description}</p>
+        </div>
+
+        {du.isRoughEstimate && (
+          <div className="notice" style={{ marginTop: 10 }}>
+            Diese Anforderung wurde als Großprojekt (Klasse XXL) eingestuft - der Preis rechts ist eine grobe
+            Hochrechnung, keine belastbare Schätzung. Eine Zerlegung in kleinere, einzeln beauftragbare Pakete wird
+            empfohlen{suggestions.length > 0 ? " - siehe Vorschläge unten." : "."}
+          </div>
+        )}
       </div>
 
-      <div className="report-header">
-        <h3>{result.requirement.title}</h3>
-        <p>{result.requirement.description}</p>
-      </div>
-
-      {view === "customer" ? (
-        <div className="report-recommendation">
-          <div className="report-recommendation-label">Unsere Empfehlung</div>
-          <div className="report-recommendation-headline">Maßgeschneiderte Umsetzung</div>
-          <div className="report-price-hero">
-            {du.price !== null ? `${du.price.toLocaleString("de-DE")} €` : "Preis auf Anfrage"}
-          </div>
-          <div className="report-price-note">
-            einmalig · {customerFacingDU !== null ? `${customerFacingDU} Development Units` : DU_CLASS_CUSTOMER_LABELS[du.duClass]}
-            {du.isRoughEstimate && " · grobe Schätzung, siehe unten"}
-          </div>
-        </div>
-      ) : (
-        <div className="report-summary-grid">
-          <div className="report-summary-item">
-            <small>DU-Klasse</small>
-            <b>{du.duClass}</b>
-          </div>
-          <div className="report-summary-item">
-            <small>Base DU (technisch)</small>
-            <b>{du.developmentUnits !== null ? `${du.developmentUnits} DU` : "Zerlegung erforderlich"}</b>
-          </div>
-          <div className="report-summary-item">
-            <small>Commercial DU (angeboten)</small>
-            <b>{du.commercialDevelopmentUnits != null ? `${du.commercialDevelopmentUnits} DU` : "–"}</b>
-          </div>
-          <div className="report-summary-item">
-            <small>Preis</small>
-            <b>{du.price !== null ? `${du.price.toLocaleString("de-DE")} €` : "–"}</b>
-          </div>
-          <div className="report-summary-item">
-            <small>DU Confidence</small>
-            <b>
-              {Math.round(du.overallConfidence * 100)}% ({du.confidenceLevel})
-            </b>
-          </div>
-        </div>
-      )}
-
-      {du.isRoughEstimate && (
-        <div className="notice" style={{ marginTop: 10 }}>
-          Diese Anforderung wurde als Großprojekt (Klasse XXL) eingestuft - der Preis oben ist eine grobe
-          Hochrechnung, keine belastbare Schätzung. Eine Zerlegung in kleinere, einzeln beauftragbare Pakete wird
-          empfohlen{suggestions.length > 0 ? " - siehe Vorschläge unten." : "."}
-        </div>
-      )}
-
+      {/* Split like the detaillierte Bewertung (WizardSteps step 3 / History):
+          section (left) carries the detailed narrative/breakdown, aside
+          (right, sticky) carries the "what does this cost and take" summary -
+          the recommendation/price for the customer view, the DU/price
+          summary + effort estimate for the internal view. */}
+      <div className="grid">
+        <section>
+          <div className="card">
       {view === "internal" && (
         <div className="report-section">
           <h4>Kundenlink teilen</h4>
@@ -253,44 +224,9 @@ export function ManagementReport({ result }: Props) {
         </div>
       )}
 
-      {view === "internal" && du.effortEstimate && (
-        <div className="report-section">
-          <h4>KI-native Aufwandsschätzung (Personalzeit)</h4>
-          <p className="report-note" style={{ marginBottom: 10 }}>
-            Diese Spanne ist Personalzeit (Analyse, Briefing/Steuerung der Coding Agents, Review, Korrekturen,
-            individuelle Entwicklungsanteile, Tests, Deployment) - nicht KI-Rechenzeit. Reine KI-API-Kosten werden
-            separat unter "KI-Kosten" erfasst.{" "}
-            {du.effortEstimate.workBreakdown
-              ? `Bottom-up aggregiert aus ${du.effortEstimate.workBreakdown.workPackages.length} Arbeitspaketen (siehe unten) - bewusst NICHT aus der DU-Klasse abgeleitet (siehe DU-Bewertung oben) und NICHT als unabhängige KI-Gesamtschätzung.`
-              : "Diese Schätzung ist eine eigenständige Experten-Einschätzung für genau diese Anforderung - bewusst NICHT aus der DU-Klasse abgeleitet (siehe DU-Bewertung oben)."}
-          </p>
-          <div className="report-summary-grid">
-            <div className="report-summary-item">
-              <small>Spanne</small>
-              <b>
-                {du.effortEstimate.minHours.toFixed(0)}–{du.effortEstimate.maxHours.toFixed(0)} Std.
-              </b>
-            </div>
-            <div className="report-summary-item">
-              <small>Wahrscheinlich</small>
-              <b>{du.effortEstimate.likelyHours.toFixed(0)} Std.</b>
-            </div>
-            <div className="report-summary-item">
-              <small>Effort Confidence</small>
-              <b>{Math.round(du.effortEstimate.confidence * 100)}%</b>
-            </div>
-          </div>
-          <p className="report-note">{du.effortEstimate.rationale.de}</p>
-          <p className="report-note">
-            Der Preis oben ergibt sich {du.pricingStrategy === "HOURLY"
-              ? `direkt aus ${du.effortEstimate.likelyHours.toFixed(0)} Std. × konfiguriertem Stundensatz`
-              : "aus der DU-Anzahl × einem konfigurierten Festpreis pro DU"}
-            . DU-Confidence ({Math.round(du.overallConfidence * 100)}%) und Effort Confidence sind bewusst getrennte
-            Größen - eine sichere DU-Einstufung bedeutet nicht automatisch eine sichere Aufwandsschätzung.
-          </p>
-        </div>
-      )}
-
+      {/* Concise effort corridor moved to the aside (right) - see below. The
+          detailed per-Work-Package breakdown stays here, in the narrative
+          flow, since it doesn't fit a narrow sticky sidebar. */}
       {view === "internal" && du.effortEstimate?.workBreakdown && (
         <WorkBreakdownSection workBreakdown={du.effortEstimate.workBreakdown} />
       )}
@@ -839,10 +775,97 @@ export function ManagementReport({ result }: Props) {
           <p>{result.overallAssessment.de}</p>
         </div>
       )}
+          </div>
+        </section>
 
-      {view === "customer" && (
-        <div className="report-cta">Haben Sie Fragen zu diesem Angebot? Sprechen Sie uns gerne an.</div>
-      )}
+        <aside>
+          <div className="card report-aside">
+            {view === "customer" ? (
+              <>
+                <div className="report-recommendation">
+                  <div className="report-recommendation-label">Unsere Empfehlung</div>
+                  <div className="report-recommendation-headline">Maßgeschneiderte Umsetzung</div>
+                  <div className="report-price-hero">
+                    {du.price !== null ? `${du.price.toLocaleString("de-DE")} €` : "Preis auf Anfrage"}
+                  </div>
+                  <div className="report-price-note">
+                    einmalig ·{" "}
+                    {customerFacingDU !== null ? `${customerFacingDU} Development Units` : DU_CLASS_CUSTOMER_LABELS[du.duClass]}
+                    {du.isRoughEstimate && " · grobe Schätzung, siehe links"}
+                  </div>
+                </div>
+                <div className="report-cta">Haben Sie Fragen zu diesem Angebot? Sprechen Sie uns gerne an.</div>
+              </>
+            ) : (
+              <>
+                <div className="report-summary-grid">
+                  <div className="report-summary-item">
+                    <small>DU-Klasse</small>
+                    <b>{du.duClass}</b>
+                  </div>
+                  <div className="report-summary-item">
+                    <small>Base DU (technisch)</small>
+                    <b>{du.developmentUnits !== null ? `${du.developmentUnits} DU` : "Zerlegung erforderlich"}</b>
+                  </div>
+                  <div className="report-summary-item">
+                    <small>Commercial DU (angeboten)</small>
+                    <b>{du.commercialDevelopmentUnits != null ? `${du.commercialDevelopmentUnits} DU` : "–"}</b>
+                  </div>
+                  <div className="report-summary-item">
+                    <small>Preis</small>
+                    <b>{du.price !== null ? `${du.price.toLocaleString("de-DE")} €` : "–"}</b>
+                  </div>
+                  <div className="report-summary-item">
+                    <small>DU Confidence</small>
+                    <b>
+                      {Math.round(du.overallConfidence * 100)}% ({du.confidenceLevel})
+                    </b>
+                  </div>
+                </div>
+
+                {du.effortEstimate && (
+                  <div className="report-section">
+                    <h4>KI-native Aufwandsschätzung (Personalzeit)</h4>
+                    <p className="report-note" style={{ marginBottom: 10 }}>
+                      Personalzeit (Analyse, Briefing/Steuerung der Coding Agents, Review, Korrekturen,
+                      individuelle Entwicklungsanteile, Tests, Deployment) - nicht KI-Rechenzeit. Reine KI-API-Kosten
+                      werden separat unter "KI-Kosten" erfasst.{" "}
+                      {du.effortEstimate.workBreakdown
+                        ? `Bottom-up aggregiert aus ${du.effortEstimate.workBreakdown.workPackages.length} Arbeitspaketen (siehe links) - bewusst NICHT aus der DU-Klasse abgeleitet und NICHT als unabhängige KI-Gesamtschätzung.`
+                        : "Eigenständige Experten-Einschätzung für genau diese Anforderung - bewusst NICHT aus der DU-Klasse abgeleitet."}
+                    </p>
+                    <div className="report-summary-grid">
+                      <div className="report-summary-item">
+                        <small>Spanne</small>
+                        <b>
+                          {du.effortEstimate.minHours.toFixed(0)}–{du.effortEstimate.maxHours.toFixed(0)} Std.
+                        </b>
+                      </div>
+                      <div className="report-summary-item">
+                        <small>Wahrscheinlich</small>
+                        <b>{du.effortEstimate.likelyHours.toFixed(0)} Std.</b>
+                      </div>
+                      <div className="report-summary-item">
+                        <small>Effort Confidence</small>
+                        <b>{Math.round(du.effortEstimate.confidence * 100)}%</b>
+                      </div>
+                    </div>
+                    <p className="report-note">{du.effortEstimate.rationale.de}</p>
+                    <p className="report-note">
+                      Der Preis oben ergibt sich {du.pricingStrategy === "HOURLY"
+                        ? `direkt aus ${du.effortEstimate.likelyHours.toFixed(0)} Std. × konfiguriertem Stundensatz`
+                        : "aus der DU-Anzahl × einem konfigurierten Festpreis pro DU"}
+                      . DU-Confidence ({Math.round(du.overallConfidence * 100)}%) und Effort Confidence sind bewusst
+                      getrennte Größen - eine sichere DU-Einstufung bedeutet nicht automatisch eine sichere
+                      Aufwandsschätzung.
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </aside>
+      </div>
     </div>
   );
 }
