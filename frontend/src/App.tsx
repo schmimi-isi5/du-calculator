@@ -41,6 +41,14 @@ function linesToList(value: string): string[] {
 
 type Tab = "dashboard" | "new" | "history" | "usage" | "settings";
 
+const TAB_TITLES: Record<Tab, string> = {
+  dashboard: "Dashboard",
+  new: "Neue Bewertung",
+  history: "Historie",
+  usage: "KI-Kosten",
+  settings: "Einstellungen",
+};
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const [language, setLanguage] = useState<UiLanguage>("de");
@@ -270,37 +278,31 @@ export default function App() {
     isRepositoryReady && !contextLoading && title.trim().length > 0 && description.trim().length > 0;
 
   return (
-    <>
-      <header className="app-header">
-        <div className="wrap head">
-          <div>
-            <div className="brand">
-              ISIFIVE <span>DU Calculator</span>
-            </div>
-            <div className="tagline">AI-native Requirement Scoring</div>
+    <div className="app-shell">
+      <nav className="sidebar">
+        <div className="sidebar-brand">
+          <div className="brand">
+            ISIFIVE <span>DU Calculator</span>
           </div>
+          <div className="tagline">AI-native Requirement Scoring</div>
         </div>
-      </header>
-
-      <main>
-        <div className="tabs">
-          <button className={activeTab === "dashboard" ? "active" : ""} onClick={() => setActiveTab("dashboard")}>
-            Dashboard
-          </button>
-          <button className={activeTab === "new" ? "active" : ""} onClick={() => setActiveTab("new")}>
-            Neue Bewertung
-          </button>
-          <button className={activeTab === "history" ? "active" : ""} onClick={() => setActiveTab("history")}>
-            Historie
-          </button>
-          <button className={activeTab === "usage" ? "active" : ""} onClick={() => setActiveTab("usage")}>
-            KI-Kosten
-          </button>
-          <button className={activeTab === "settings" ? "active" : ""} onClick={() => setActiveTab("settings")}>
-            Einstellungen
-          </button>
+        <div className="sidebar-nav">
+          {(Object.keys(TAB_TITLES) as Tab[]).map((tab) => (
+            <button key={tab} className={activeTab === tab ? "active" : ""} onClick={() => setActiveTab(tab)}>
+              {TAB_TITLES[tab]}
+            </button>
+          ))}
         </div>
+      </nav>
 
+      <div className="app-content">
+        <header className="app-header">
+          <div className="wrap">
+            <h1>{TAB_TITLES[activeTab]}</h1>
+          </div>
+        </header>
+
+        <main>
         {activeTab === "dashboard" && (
           <Dashboard
             onStartNewAssessment={() => setActiveTab("new")}
@@ -491,7 +493,8 @@ export default function App() {
         {activeTab === "usage" && <AIUsageDashboard />}
 
         {activeTab === "settings" && <SettingsPanel />}
-      </main>
-    </>
+        </main>
+      </div>
+    </div>
   );
 }

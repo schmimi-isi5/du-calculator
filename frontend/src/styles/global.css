@@ -28,27 +28,85 @@ body {
   overflow-wrap: anywhere;
 }
 
-header.app-header {
+/* Left navigation menu + content column (header and <main> both). The
+   sidebar and header/content used to be two independently-centered
+   containers (a 1260px-max header vs. a 1900px-max main) that visibly
+   drifted apart on wide screens - .wrap now shares main's exact width
+   formula so the header and the content below it always line up. */
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+  align-items: stretch;
+}
+
+.sidebar {
+  width: 220px;
+  flex-shrink: 0;
   background: var(--teal);
   color: #fff;
-  padding: 18px 24px;
+  display: flex;
+  flex-direction: column;
+  padding: 22px 0;
+}
+
+.sidebar-brand {
+  padding: 0 20px 18px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 12px;
+}
+
+.sidebar-nav button {
+  text-align: left;
+  background: transparent;
+  border: 0;
+  color: rgba(255, 255, 255, 0.85);
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-weight: 800;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.sidebar-nav button:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.sidebar-nav button.active {
+  background: #fff;
+  color: var(--teal);
+}
+
+.app-content {
+  flex: 1;
+  min-width: 0;
+}
+
+header.app-header {
+  background: #fff;
+  border-bottom: 1px solid var(--line);
+  padding: 18px 0;
+}
+
+header.app-header h1 {
+  margin: 0;
+  font-size: 19px;
 }
 
 .wrap {
-  max-width: 1260px;
+  width: min(92%, 1900px);
   margin: 0 auto;
-}
-
-.head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
+  padding: 0 18px;
 }
 
 .brand {
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 900;
 }
 
@@ -65,10 +123,39 @@ main {
   /* At least ~80% of the viewport on realistic desktop widths (1260px was
      leaving huge empty gutters on wider screens), capped so line lengths
      and the .grid sidebar layout stay sane on very large/ultrawide
-     monitors instead of stretching indefinitely. */
+     monitors instead of stretching indefinitely. Same width formula as
+     .wrap above, so the header and the content directly below it align. */
   width: min(92%, 1900px);
   margin: 0 auto;
   padding: 20px 18px 60px;
+}
+
+@media (max-width: 900px) {
+  .app-shell {
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .sidebar {
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    padding: 12px 16px;
+    gap: 10px 16px;
+  }
+
+  .sidebar-brand {
+    padding: 0;
+    margin-bottom: 0;
+    border-bottom: 0;
+  }
+
+  .sidebar-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    padding: 0;
+  }
 }
 
 .grid {
