@@ -16,7 +16,6 @@ import { HistoryPanel } from "./components/HistoryPanel";
 import { ManagementReport } from "./components/ManagementReport";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { RepositoryPanel } from "./components/RepositoryPanel";
-import { RepositoryPicker } from "./components/RepositoryPicker";
 import { RepositorySummaryBar } from "./components/RepositorySummaryBar";
 import { RequirementContextPanel } from "./components/RequirementContextPanel";
 import { RequirementPanel } from "./components/RequirementPanel";
@@ -317,12 +316,6 @@ export default function App() {
 
             {wizardStep === 1 && (
               <div className="wizard-single-column">
-                <RepositoryPicker
-                  activeSnapshotId={snapshot?.id ?? null}
-                  onUse={handleUseExistingRepository}
-                  refreshToken={repoPickerRefreshToken}
-                />
-
                 <RepositoryPanel
                   repositoryUrl={repositoryUrl}
                   branch={branch}
@@ -335,6 +328,9 @@ export default function App() {
                   onChangeAccessToken={setAccessToken}
                   onAnalyze={handleAnalyze}
                   onGreenfield={handleGreenfield}
+                  activeSnapshotId={snapshot?.id ?? null}
+                  onUseRepository={handleUseExistingRepository}
+                  repoPickerRefreshToken={repoPickerRefreshToken}
                 />
 
                 {isRepositoryReady && (

@@ -139,6 +139,10 @@ textarea {
   resize: vertical;
 }
 
+.textarea-large {
+  min-height: 150px;
+}
+
 .row {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -192,6 +196,9 @@ textarea {
 .quality-level-option-label {
   font-weight: 800;
   font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .quality-level-option-description {
@@ -199,14 +206,59 @@ textarea {
   color: var(--muted);
 }
 
-.privacy-mode-toggle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 10px;
-  font-size: 12px;
+.model-category-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.model-category-badge {
+  font-size: 10px;
+  font-weight: 700;
   color: var(--muted);
+  background: #eef1f0;
+  border-radius: 999px;
+  padding: 1px 7px;
+  margin-left: auto;
+}
+
+/* Elevated privacy/trust signal (spec: "sollte an der Stelle eine höhere
+   Gewichtung bekommen") - a distinct callout box instead of a plain
+   checkbox label, so choosing local-only processing reads as a deliberate
+   quality/trust decision rather than an easy-to-miss footnote. */
+.privacy-mode-callout {
+  margin-top: 12px;
+  border: 1px solid var(--green);
+  background: var(--green-tint);
+  border-radius: 9px;
+  padding: 10px 12px;
+}
+
+.privacy-mode-callout label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
   cursor: pointer;
+  margin: 0;
+}
+
+.privacy-mode-callout input[type="checkbox"] {
+  width: auto;
+  margin-top: 3px;
+}
+
+.privacy-mode-callout strong {
+  display: block;
+  font-size: 13px;
+  color: #3d6b09;
+}
+
+.privacy-mode-callout-subtitle {
+  display: block;
+  font-size: 12px;
+  color: var(--ink);
+  margin-top: 2px;
 }
 
 .btn {
@@ -938,6 +990,91 @@ code.file-path {
   gap: 8px;
 }
 
+/* Proportional stacked bar (Dashboard.tsx StackedBar) - one segment per
+   category, width proportional to its share of the total. */
+.stacked-bar {
+  display: flex;
+  height: 14px;
+  border-radius: 7px;
+  overflow: hidden;
+  background: #eef1f0;
+}
+
+.stacked-bar-segment {
+  height: 100%;
+}
+
+.stacked-bar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.stacked-bar-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stacked-bar-legend-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* Horizontal bar list (Dashboard.tsx BarChartList) - one row per item, bar
+   length proportional to the largest value in the list. */
+.bar-chart-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bar-chart-row {
+  display: grid;
+  grid-template-columns: 140px 1fr 100px;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.bar-chart-row-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.bar-chart-track {
+  height: 8px;
+  border-radius: 4px;
+  background: #eef1f0;
+  overflow: hidden;
+}
+
+.bar-chart-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--teal);
+}
+
+.bar-chart-row-value {
+  color: var(--muted);
+  text-align: right;
+  white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+  .bar-chart-row {
+    grid-template-columns: 90px 1fr 80px;
+  }
+}
+
 .dashboard-list {
   list-style: none;
   margin: 0;
@@ -965,6 +1102,18 @@ code.file-path {
 
 .dashboard-list-item:hover {
   background: var(--teal-tint);
+}
+
+.history-selected-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px;
+  background: var(--teal-tint);
+  border-radius: 8px;
+  font-size: 13px;
+  margin-top: 4px;
 }
 
 .repo-picker {

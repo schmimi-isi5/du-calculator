@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { RepositorySnapshot } from "../types";
 import { REPOSITORY_STATUS_META } from "../statusMeta";
+import { RepositoryPicker } from "./RepositoryPicker";
 
 interface Props {
   repositoryUrl: string;
@@ -14,6 +15,10 @@ interface Props {
   onChangeAccessToken: (value: string) => void;
   onAnalyze: () => void;
   onGreenfield: () => void;
+  /** Feeds the "bereits analysiert" quick-pick, integrated directly into this panel instead of a separate card above it. */
+  activeSnapshotId: string | null;
+  onUseRepository: (id: string) => void;
+  repoPickerRefreshToken: number;
 }
 
 // The single most important decision on this screen is "existing repository
@@ -35,6 +40,9 @@ export function RepositoryPanel({
   onChangeAccessToken,
   onAnalyze,
   onGreenfield,
+  activeSnapshotId,
+  onUseRepository,
+  repoPickerRefreshToken,
 }: Props) {
   const [mode, setMode] = useState<SourceMode>("existing");
   const statusMeta = REPOSITORY_STATUS_META[snapshot?.status ?? "NOT_ANALYZED"];
@@ -67,9 +75,13 @@ export function RepositoryPanel({
 
       {mode === "existing" ? (
         <>
+          <RepositoryPicker activeSnapshotId={activeSnapshotId} onUse={onUseRepository} refreshToken={repoPickerRefreshToken} />
+
           <div className="row" style={{ marginTop: 14 }}>
             <div>
-              <label htmlFor="repositoryUrl">Repository URL</label>
+              <label htmlFor="repositoryUrl">
+                {activeSnapshotId ? "…oder eine andere Repository-URL analysieren" : "Repository URL"}
+              </label>
               <input
                 id="repositoryUrl"
                 value={repositoryUrl}

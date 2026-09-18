@@ -16,6 +16,66 @@ import type {
   ScoringStats,
 } from "../types";
 
+const STATUS_VARIANT_COLOR: Record<string, string> = {
+  idle: "var(--muted)",
+  progress: "var(--teal)",
+  success: "var(--green)",
+  warn: "var(--warn)",
+  error: "var(--danger)",
+};
+
+/** Proportional horizontal stacked bar - one segment per category, colored by the same status-pill variant used elsewhere, so a status always has the same color whether shown as a pill, a chip, or a chart segment. */
+function StackedBar({ segments }: { segments: { key: string; label: string; count: number; variant: string }[] }) {
+  const total = segments.reduce((sum, s) => sum + s.count, 0);
+  if (total === 0) return null;
+  return (
+    <div>
+      <div className="stacked-bar">
+        {segments
+          .filter((s) => s.count > 0)
+          .map((s) => (
+            <div
+              key={s.key}
+              className="stacked-bar-segment"
+              style={{ width: `${(s.count / total) * 100}%`, background: STATUS_VARIANT_COLOR[s.variant] ?? "var(--muted)" }}
+              title={`${s.label}: ${s.count}`}
+            />
+          ))}
+      </div>
+      <div className="stacked-bar-legend">
+        {segments
+          .filter((s) => s.count > 0)
+          .map((s) => (
+            <span className="stacked-bar-legend-item" key={s.key}>
+              <span className="stacked-bar-legend-dot" style={{ background: STATUS_VARIANT_COLOR[s.variant] ?? "var(--muted)" }} />
+              {s.label}: {s.count} ({Math.round((s.count / total) * 100)}%)
+            </span>
+          ))}
+      </div>
+    </div>
+  );
+}
+
+/** Horizontal bar list, one row per item, bar length proportional to the largest value in the list - used for cost/usage-by-model, where an absolute scale would make a small model invisible. */
+function BarChartList({ rows }: { rows: { key: string; label: string; value: number; displayValue: string }[] }) {
+  const max = Math.max(...rows.map((r) => r.value), 1);
+  return (
+    <div className="bar-chart-list">
+      {rows.map((r) => (
+        <div className="bar-chart-row" key={r.key}>
+          <span className="bar-chart-row-label" title={r.label}>
+            {r.label}
+          </span>
+          <div className="bar-chart-track">
+            <div className="bar-chart-fill" style={{ width: `${(r.value / max) * 100}%` }} />
+          </div>
+          <span className="bar-chart-row-value">{r.displayValue}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 interface Props {
   onStartNewAssessment: () => void;
   onUseRepository: (id: string) => void;
@@ -142,29 +202,48 @@ export function Dashboard({ onStartNewAssessment, onUseRepository, onSelectHisto
             </div>
           </div>
 
-          {scoringStats && scoringStats.total > 0 && (
-            <div className="card" style={{ marginTop: 16 }}>
-              <h3 style={{ margin: "0 0 10px" }}>Bewertungsstatus im Überblick</h3>
-              <div className="dashboard-status-chips">
-                {Object.entries(scoringStats.byStatus).map(([status, count]) => (
-                  <span key={status} className={`status-pill ${SCORING_STATUS_META[status as keyof typeof SCORING_STATUS_META]?.variant ?? "idle"}`}>
-                    {SCORING_STATUS_META[status as keyof typeof SCORING_STATUS_META]?.label ?? status}: {count}
-                  </span>
-                ))}
+          <div className="row" style={{ marginTop: 16, alignItems: "stretch" }}>
+            {scoringStats && scoringStats.total > 0 && (
+              <div className="card">
+                <h3 style={{ margin: "0 0 10px" }}>Bewertungsstatus im Überblick</h3>
+                <StackedBar
+                  segments={Object.entries(scoringStats.byStatus).map(([status, count]) => ({
+                    key: status,
+                    label: SCORING_STATUS_META[status as keyof typeof SCORING_STATUS_META]?.label ?? status,
+                    count,
+                    variant: SCORING_STATUS_META[status as keyof typeof SCORING_STATUS_META]?.variant ?? "idle",
+                  }))}
+                />
               </div>
-            </div>
-          )}
+            )}
+
+            {repoStats && repoStats.total > 0 && (
+              <div className="card">
+                <h3 style={{ margin: "0 0 10px" }}>Repositories: bestehend vs. Greenfield</h3>
+                <StackedBar
+                  segments={[
+                    { key: "EXISTING_SYSTEM", label: "Bestehendes Repository", count: repoStats.byMode.EXISTING_SYSTEM ?? 0, variant: "progress" },
+                    { key: "GREENFIELD", label: "Greenfield", count: repoStats.byMode.GREENFIELD ?? 0, variant: "success" },
+                  ]}
+                />
+              </div>
+            )}
+          </div>
 
           {topModels.length > 0 && (
             <div className="card" style={{ marginTop: 16 }}>
-              <h3 style={{ margin: "0 0 10px" }}>Verwendete Modelle (letzte {USAGE_WINDOW_DAYS} Tage)</h3>
-              <div className="dashboard-status-chips">
-                {topModels.map((m) => (
-                  <span className="tag" key={m.key}>
-                    {m.key} · {m.requestCount} Aufrufe
-                  </span>
-                ))}
-              </div>
+              <h3 style={{ margin: "0 0 10px" }}>KI-Kosten nach Modell (letzte {USAGE_WINDOW_DAYS} Tage)</h3>
+              <BarChartList
+                rows={topModels.map((m) => ({
+                  key: m.key,
+                  label: m.key,
+                  value: m.costUsd ?? m.requestCount,
+                  displayValue: m.costUsd !== null ? formatCost(m.costUsd) : `${m.requestCount} Aufrufe (Kosten unbekannt)`,
+                }))}
+              />
+              <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 8 }}>
+                Balkenlänge nach Kosten, sofern bekannt - sonst nach Anzahl Aufrufe.
+              </p>
             </div>
           )}
 
