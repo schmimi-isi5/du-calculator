@@ -10,6 +10,13 @@ import {
   EFFORT_WORK_PACKAGE_CATEGORIES,
   WORK_PACKAGE_REUSE_LEVELS,
 } from "./effort.js";
+import {
+  CHALLENGE_EVIDENCE_SOURCE_TYPES,
+  CHALLENGE_IMPACT_DIRECTIONS,
+  CHALLENGE_MAINTAINABILITY_IMPACTS,
+  REQUIREMENT_CHALLENGE_TYPES,
+  SOLUTION_SPECIFICITY_LEVELS,
+} from "./requirementChallenge.js";
 import { TECHNOLOGY_IDS, TECHNOLOGY_PROFILE_FACTORS } from "./technology.js";
 
 export const LocalizedTextSchema = z.object({
@@ -490,6 +497,71 @@ export const RequirementNormalizationSchema = z.object({
 export const ContextResolutionOutputSchema = z.object({
   normalization: RequirementNormalizationSchema,
   knownFacts: z.array(KnownFactSchema),
+  assumptions: z.array(AssumptionOutputSchema),
+  missingInformation: z.array(MissingInformationOutputSchema),
+});
+
+// ---------------------------------------------------------------------------
+// Requirement Challenge & Optimization (requirement-challenge-v1) - see
+// domain/types.ts for the full architecture comment. The AI never states a
+// DU, price, effort-hours, or technology-fit number here.
+// ---------------------------------------------------------------------------
+
+const ChallengeEvidenceSchema = z.object({
+  sourceType: z.enum(CHALLENGE_EVIDENCE_SOURCE_TYPES),
+  reference: z
+    .string()
+    .describe('A concrete pointer: a file path for REPOSITORY, an exact excerpt for requirement-shaped sources, an assumption id for ASSUMPTION, etc. Never invented.'),
+  description: z.string().describe("In German - why this supports the proposal."),
+  status: EvidenceStatusSchema,
+});
+
+const RequirementChallengeExpectedImpactSchema = z.object({
+  scope: z.enum(CHALLENGE_IMPACT_DIRECTIONS),
+  complexity: z.enum(CHALLENGE_IMPACT_DIRECTIONS),
+  maintainability: z.enum(CHALLENGE_MAINTAINABILITY_IMPACTS),
+  reuse: z.enum(CHALLENGE_IMPACT_DIRECTIONS),
+  implementationFreedom: z.enum(CHALLENGE_IMPACT_DIRECTIONS),
+});
+
+export const RequirementChallengeProposalInputSchema = z.object({
+  type: z.enum(REQUIREMENT_CHALLENGE_TYPES),
+  title: z.string().describe("In German - short, specific."),
+  originalText: z
+    .string()
+    .describe(
+      "The exact source text (or a faithful excerpt) this proposal is about - copy it verbatim from the requirement/acceptance criteria/constraints wherever possible, so the application can locate the matching entry. Never invented.",
+    ),
+  issue: z.string().describe("In German - what is unclear, assumed, an unnecessary solution constraint, conflicting, reducible scope, a reuse opportunity, or an improvable acceptance criterion."),
+  proposedChange: z
+    .string()
+    .describe("In German - the concrete replacement text, phrased at the goal/functional level unless the type is ACCEPTANCE_IMPROVEMENT (a revised acceptance criterion) - never a DU/hours/price figure."),
+  rationale: z.string().describe("In German - why this change serves the same underlying goal at least as well."),
+  evidence: z.array(ChallengeEvidenceSchema),
+  expectedImpact: RequirementChallengeExpectedImpactSchema,
+  confidence: z.number().min(0).max(1),
+});
+
+export const RequirementChallengeAnalysisSchema = z.object({
+  goal: z.string().describe("In German - the underlying business goal, separated from any proposed technical solution."),
+  problemStatement: z.string().describe("In German - restates the problem being solved, independent of implementation."),
+  solutionSpecificity: z
+    .enum(SOLUTION_SPECIFICITY_LEVELS)
+    .describe("How much of the requirement as given is already a concrete technical solution rather than a business goal."),
+});
+
+/**
+ * Output of AIProvider.challengeRequirement. Deliberately has NO total/
+ * quality score anywhere in this schema (spec: "keine neuen Magic Scores")
+ * and reuses the exact Assumption/MissingInformation shapes from
+ * ContextResolutionOutputSchema so Challenge-proposed assumptions and
+ * information gaps flow through the same clarification gate as
+ * normalization's own (see scoring/requirementChallengeEngine.ts
+ * appendChallengeKnowledge).
+ */
+export const RequirementChallengeOutputSchema = z.object({
+  analysis: RequirementChallengeAnalysisSchema,
+  proposals: z.array(RequirementChallengeProposalInputSchema),
   assumptions: z.array(AssumptionOutputSchema),
   missingInformation: z.array(MissingInformationOutputSchema),
 });

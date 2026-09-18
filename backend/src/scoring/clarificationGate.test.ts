@@ -270,10 +270,18 @@ describe("activeAssumptions", () => {
 
 function buildContext(overrides: Partial<RequirementContext> = {}): RequirementContext {
   const now = new Date().toISOString();
+  const requirement = { title: "t", description: "d", acceptanceCriteria: [], constraints: [] };
   return {
     id: "ctx-1",
     snapshotId: "snap-1",
-    requirement: { title: "t", description: "d", acceptanceCriteria: [], constraints: [] },
+    requirement,
+    originalRequirement: requirement,
+    normalizedRequirement: null,
+    approvedRequirement: null,
+    approvalStatus: "APPROVED",
+    challengeAnalysis: null,
+    challengeProposals: [],
+    requirementPreparationVersion: null,
     qualityLevel: "standard",
     model: "claude-opus-5",
     normalization: null,

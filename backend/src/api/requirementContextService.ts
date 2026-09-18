@@ -14,6 +14,7 @@ import {
   type AutoRoutingCriteria,
 } from "../domain/models.js";
 import { DEFAULT_QUALITY_LEVEL, QUALITY_PROFILES } from "../domain/qualityLevels.js";
+import { REQUIREMENT_PREPARATION_VERSION } from "../domain/requirementChallenge.js";
 import type {
   QualityLevel,
   RepositorySnapshot,
@@ -22,6 +23,12 @@ import type {
   RequirementNormalization,
 } from "../domain/types.js";
 import { buildResolvedContextParts, hasPendingClarifications } from "../scoring/clarificationGate.js";
+import {
+  appendChallengeKnowledge,
+  buildOptimizedRequirement,
+  dedupeChallengeProposals,
+  evaluateApprovalStatus,
+} from "../scoring/requirementChallengeEngine.js";
 import { getSetting, SETTINGS_KEYS } from "../store/AppSettingsStore.js";
 import { store } from "../store/PostgresScoringStore.js";
 
@@ -140,11 +147,24 @@ export async function runContextResolution(
   // this again, so it never silently discards an edit made via the
   // requirement-review endpoint in between.
   const effectiveRequirement = existing === null ? applyNormalizationToRequirement(requirement, output.normalization) : requirement;
+  const isFirstRound = existing === null;
 
   const context: RequirementContext = {
     id: contextId,
     snapshotId,
     requirement: effectiveRequirement,
+    // Immutable once set - see domain/types.ts RequirementContext. The
+    // FIRST round's inputs are the true "as submitted"/"as normalized"
+    // snapshots; every later round (answering a clarification) reuses them
+    // unchanged, since re-resolving doesn't change what was originally
+    // written or how it was first normalized, only what's known about it.
+    originalRequirement: existing?.originalRequirement ?? requirement,
+    normalizedRequirement: existing?.normalizedRequirement ?? effectiveRequirement,
+    approvedRequirement: existing?.approvedRequirement ?? null,
+    approvalStatus: existing?.approvalStatus ?? "DRAFT",
+    challengeAnalysis: existing?.challengeAnalysis ?? null,
+    challengeProposals: existing?.challengeProposals ?? [],
+    requirementPreparationVersion: existing?.requirementPreparationVersion ?? (isFirstRound ? REQUIREMENT_PREPARATION_VERSION : null),
     qualityLevel: effectiveQualityLevel,
     model: effectiveModel,
     normalization: output.normalization,
@@ -161,6 +181,76 @@ export async function runContextResolution(
 
   await store.saveRequirementContext(context);
   return context;
+}
+
+/**
+ * Runs (or re-runs) Requirement Challenge & Optimization - a distinct AI
+ * call from context resolution, since it produces a genuinely different
+ * shape (proposals + analysis, never facts/DU-relevant classification) and
+ * only makes sense once resolution itself has no open clarifications left
+ * (spec: Challenge reads the settled normalized draft, not one still
+ * shifting round to round). Never mutates originalRequirement/
+ * normalizedRequirement - only challengeAnalysis/challengeProposals/
+ * assumptions/missingInformation/clarifications/requirement/approvalStatus.
+ */
+export async function runRequirementChallenge(context: RequirementContext): Promise<RequirementContext> {
+  if (context.status !== "RESOLVED") {
+    throw new RequirementContextError("Requirement context must be fully resolved (no open clarifications) before running Requirement Challenge.");
+  }
+
+  const snapshot = await store.getSnapshot(context.snapshotId);
+  if (!snapshot || snapshot.status !== "SNAPSHOT_CREATED" || !snapshot.profile) {
+    throw new RequirementContextError("Repository has not been successfully analyzed yet.");
+  }
+  const repositoryContext = await store.getRepositoryContext(context.snapshotId);
+  if (!repositoryContext) {
+    throw new RequirementContextError("Repository context is not available for this snapshot. Re-analyze the repository.");
+  }
+
+  const modelEntry = getModelById(context.model, currentModelRegistry());
+  if (!modelEntry) {
+    throw new RequirementContextError(`Unknown model "${context.model}".`);
+  }
+  const aiProvider = getAIProviderForModel(modelEntry);
+  const normalizedRequirement = context.normalizedRequirement ?? context.requirement;
+  const knowledge = { knownFacts: context.knownFacts, assumptions: context.assumptions };
+
+  const output = await aiProvider.challengeRequirement(
+    context.originalRequirement,
+    normalizedRequirement,
+    snapshot.profile as NonNullable<RepositorySnapshot["profile"]>,
+    repositoryContext,
+    knowledge,
+    context.challengeProposals,
+    context.qualityLevel,
+    context.model,
+    { snapshotId: context.snapshotId, requirementContextId: context.id },
+    snapshot.mode,
+  );
+
+  const challengeProposals = dedupeChallengeProposals(context.challengeProposals, output.proposals);
+  const maxNewClarifications = QUALITY_PROFILES[context.qualityLevel].maxClarificationsPerRound;
+  const knowledgeUpdate = appendChallengeKnowledge(context, output, maxNewClarifications);
+
+  const requirement = normalizedRequirement;
+  const now = new Date().toISOString();
+  const nextContext: RequirementContext = {
+    ...context,
+    challengeAnalysis: output.analysis,
+    challengeProposals,
+    assumptions: knowledgeUpdate.assumptions,
+    missingInformation: knowledgeUpdate.missingInformation,
+    clarifications: knowledgeUpdate.clarifications,
+    // Re-running Challenge always restarts from the untouched normalized
+    // draft, then re-applies every currently decided proposal - so a
+    // second Challenge run never doubles up notes from the first one.
+    requirement: buildOptimizedRequirement(requirement, challengeProposals),
+    updatedAt: now,
+  };
+  nextContext.approvalStatus = evaluateApprovalStatus(nextContext);
+
+  await store.saveRequirementContext(nextContext);
+  return nextContext;
 }
 
 /**

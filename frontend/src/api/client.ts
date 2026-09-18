@@ -4,6 +4,7 @@ import type {
   AIUsageLogEntry,
   AIUsageSummary,
   AssumptionAction,
+  ChallengeProposalAction,
   CustomerReport,
   OllamaStatus,
   QualityLevel,
@@ -20,7 +21,10 @@ import type {
   TechnologyKey,
 } from "../types";
 
-export class ApiError extends Error {}
+export class ApiError extends Error {
+  /** Set only by endpoints that report structured gate-failure reasons (e.g. POST .../approve) - see RequirementReviewPanel.tsx's approval gate display. */
+  reasons?: string[];
+}
 
 async function handleResponse<T>(response: Response): Promise<T> {
   let payload: unknown;
@@ -35,7 +39,11 @@ async function handleResponse<T>(response: Response): Promise<T> {
       typeof payload === "object" && payload !== null && "error" in payload
         ? String((payload as { error: unknown }).error)
         : `Anfrage fehlgeschlagen (HTTP ${response.status}).`;
-    throw new ApiError(message);
+    const error = new ApiError(message);
+    if (typeof payload === "object" && payload !== null && "reasons" in payload && Array.isArray((payload as { reasons: unknown }).reasons)) {
+      error.reasons = (payload as { reasons: unknown[] }).reasons.map(String);
+    }
+    throw error;
   }
 
   return payload as T;
@@ -173,6 +181,29 @@ export function applyAssumptionAction(
     `/api/requirement-context/${encodeURIComponent(contextId)}/assumptions/${encodeURIComponent(assumptionId)}`,
     { action, editedText },
   );
+}
+
+/** Requirement Challenge & Optimization (requirement-challenge-v1) - runs the AI challenge call. Requires the context to be fully RESOLVED first. */
+export function runRequirementChallenge(contextId: string): Promise<RequirementContext> {
+  return postJson<RequirementContext>(`/api/requirement-context/${encodeURIComponent(contextId)}/challenge`, {});
+}
+
+/** Records the user's ACCEPT/REJECT/EDIT decision on one Challenge proposal - no AI call. */
+export function decideChallengeProposal(
+  contextId: string,
+  proposalId: string,
+  action: ChallengeProposalAction,
+  editedText?: string,
+): Promise<RequirementContext> {
+  return postJson<RequirementContext>(
+    `/api/requirement-context/${encodeURIComponent(contextId)}/challenge/proposals/${encodeURIComponent(proposalId)}`,
+    { action, editedText },
+  );
+}
+
+/** Freezes the current working requirement as approvedRequirement - the only version /score is allowed to read. Rejected with a 400 (surfaced as ApiError) if the approval gate does not pass. */
+export function approveRequirement(contextId: string): Promise<RequirementContext> {
+  return postJson<RequirementContext>(`/api/requirement-context/${encodeURIComponent(contextId)}/approve`, {});
 }
 
 export function scoreRequirement(contextId: string): Promise<ScoringResult> {

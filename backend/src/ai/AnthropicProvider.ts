@@ -9,6 +9,7 @@ import {
   ContextResolutionOutputSchema,
   RepositoryProfileSchema,
   RequirementAssessmentSchema,
+  RequirementChallengeOutputSchema,
 } from "../domain/schemas.js";
 import type {
   Clarification,
@@ -19,6 +20,8 @@ import type {
   RepositoryProfile,
   RepositorySnapshotMode,
   RequirementAssessment,
+  RequirementChallengeOutput,
+  RequirementChallengeProposal,
 } from "../domain/types.js";
 import { QUALITY_PROFILES, type EffortLevel } from "../domain/qualityLevels.js";
 import type { AIProvider, RepositoryIdentity, ResolvedRequirementKnowledge, UsageContext } from "./AIProvider.js";
@@ -28,6 +31,7 @@ import {
   buildAssessmentPrompt,
   buildContextResolutionPrompt,
   buildRepositoryAnalysisPrompt,
+  buildRequirementChallengePrompt,
   type PromptParts,
 } from "./prompts.js";
 import { recordUsage } from "./usageTracker.js";
@@ -119,6 +123,38 @@ export class AnthropicProvider implements AIProvider {
       "assessRequirement",
       model,
       QUALITY_PROFILES[qualityLevel].assessmentEffort,
+      usage,
+    );
+  }
+
+  async challengeRequirement(
+    originalRequirement: Requirement,
+    normalizedRequirement: Requirement,
+    profile: RepositoryProfile,
+    context: RepositoryContext,
+    knowledge: ResolvedRequirementKnowledge,
+    existingProposals: RequirementChallengeProposal[],
+    qualityLevel: QualityLevel,
+    model: string,
+    usage: UsageContext,
+    mode?: RepositorySnapshotMode,
+  ): Promise<RequirementChallengeOutput> {
+    const prompt = buildRequirementChallengePrompt(
+      originalRequirement,
+      normalizedRequirement,
+      profile,
+      context,
+      knowledge,
+      existingProposals,
+      qualityLevel,
+      mode,
+    );
+    return this.parse<RequirementChallengeOutput>(
+      prompt,
+      RequirementChallengeOutputSchema,
+      "challengeRequirement",
+      model,
+      QUALITY_PROFILES[qualityLevel].challengeEffort,
       usage,
     );
   }

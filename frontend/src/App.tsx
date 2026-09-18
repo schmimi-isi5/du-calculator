@@ -4,10 +4,13 @@ import {
   answerClarifications,
   ApiError,
   applyAssumptionAction,
+  approveRequirement,
   createGreenfieldSnapshot,
+  decideChallengeProposal,
   getRepositorySnapshot,
   getScoringResult,
   resolveRequirementContext,
+  runRequirementChallenge,
   scoreRequirement,
   updateRequirementContextRequirement,
 } from "./api/client";
@@ -18,6 +21,7 @@ import { ManagementReport } from "./components/ManagementReport";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { RepositoryPanel } from "./components/RepositoryPanel";
 import { RepositorySummaryBar } from "./components/RepositorySummaryBar";
+import { RequirementChallengePanel } from "./components/RequirementChallengePanel";
 import { RequirementContextPanel } from "./components/RequirementContextPanel";
 import { RequirementPanel } from "./components/RequirementPanel";
 import { RequirementReviewPanel } from "./components/RequirementReviewPanel";
@@ -27,6 +31,7 @@ import type { WizardStep } from "./components/WizardSteps";
 import { WizardSteps } from "./components/WizardSteps";
 import type {
   AssumptionAction,
+  ChallengeProposalAction,
   QualityLevel,
   RepositorySnapshot,
   RequirementContext,
@@ -75,6 +80,12 @@ export default function App() {
   const [contextRequestError, setContextRequestError] = useState<string | null>(null);
   const [reviewSaving, setReviewSaving] = useState(false);
 
+  const [challengeLoading, setChallengeLoading] = useState(false);
+  const [challengeError, setChallengeError] = useState<string | null>(null);
+  const [decidingProposalId, setDecidingProposalId] = useState<string | null>(null);
+  const [approveLoading, setApproveLoading] = useState(false);
+  const [approveError, setApproveError] = useState<{ message: string; reasons?: string[] } | null>(null);
+
   const [scoringResult, setScoringResult] = useState<ScoringResult | null>(null);
   const [scoringLoading, setScoringLoading] = useState(false);
 
@@ -91,6 +102,7 @@ export default function App() {
 
   const isRepositoryReady = snapshot?.status === "SNAPSHOT_CREATED";
   const isContextResolved = requirementContext?.status === "RESOLVED";
+  const isRequirementApproved = requirementContext?.approvalStatus === "APPROVED";
   const maxReachableStep: WizardStep = scoringLoading || scoringResult ? 3 : isRepositoryReady ? 2 : 1;
 
   async function handleAnalyze() {
@@ -165,6 +177,8 @@ export default function App() {
     setSnapshot(null);
     setRequirementContext(null);
     setScoringResult(null);
+    setChallengeError(null);
+    setApproveError(null);
     setWizardStep(1);
   }
 
@@ -174,6 +188,8 @@ export default function App() {
     setContextRequestError(null);
     setRequirementContext(null);
     setScoringResult(null);
+    setChallengeError(null);
+    setApproveError(null);
     try {
       const context = await resolveRequirementContext(
         snapshot.id,
@@ -249,8 +265,58 @@ export default function App() {
     }
   }
 
+  async function handleRunChallenge() {
+    if (!requirementContext) return;
+    setChallengeLoading(true);
+    setChallengeError(null);
+    setApproveError(null);
+    try {
+      const updated = await runRequirementChallenge(requirementContext.id);
+      setRequirementContext(updated);
+    } catch (err) {
+      setChallengeError(err instanceof ApiError ? err.message : "Unerwarteter Fehler.");
+    } finally {
+      setChallengeLoading(false);
+    }
+  }
+
+  async function handleDecideChallengeProposal(proposalId: string, action: ChallengeProposalAction, editedText?: string) {
+    if (!requirementContext) return;
+    setDecidingProposalId(proposalId);
+    setApproveError(null);
+    try {
+      const updated = await decideChallengeProposal(requirementContext.id, proposalId, action, editedText);
+      setRequirementContext(updated);
+      // The working requirement just changed - a previous scoring result no
+      // longer matches it, same reasoning as an edited assumption above.
+      setScoringResult(null);
+    } catch (err) {
+      setChallengeError(err instanceof ApiError ? err.message : "Unerwarteter Fehler.");
+    } finally {
+      setDecidingProposalId(null);
+    }
+  }
+
+  async function handleApproveRequirement() {
+    if (!requirementContext) return;
+    setApproveLoading(true);
+    setApproveError(null);
+    try {
+      const updated = await approveRequirement(requirementContext.id);
+      setRequirementContext(updated);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setApproveError({ message: err.message, reasons: err.reasons });
+      } else {
+        setApproveError({ message: "Unerwarteter Fehler." });
+      }
+    } finally {
+      setApproveLoading(false);
+    }
+  }
+
   async function handleScore() {
-    if (!requirementContext || requirementContext.status !== "RESOLVED") return;
+    if (!requirementContext || requirementContext.approvalStatus !== "APPROVED") return;
     setWizardStep(3);
     setScoringLoading(true);
     setScoringResult(null);
@@ -421,7 +487,26 @@ export default function App() {
                   />
                 )}
 
-                {isContextResolved && (
+                {/* Requirement Challenge & Optimization (requirement-challenge-v1) -
+                    only runnable once normalization is fully RESOLVED (no open
+                    clarifications). /score requires approvalStatus === "APPROVED",
+                    so this stage sits between the knowledge review above and the
+                    "weiter" button below. */}
+                {isContextResolved && requirementContext && (
+                  <RequirementChallengePanel
+                    context={requirementContext}
+                    challengeLoading={challengeLoading}
+                    challengeError={challengeError}
+                    decidingProposalId={decidingProposalId}
+                    approveLoading={approveLoading}
+                    approveError={approveError}
+                    onRunChallenge={handleRunChallenge}
+                    onDecideProposal={handleDecideChallengeProposal}
+                    onApprove={handleApproveRequirement}
+                  />
+                )}
+
+                {isRequirementApproved && (
                   <div className="wizard-next">
                     <button className="btn primary" onClick={handleScore}>
                       Weiter: Bewertung starten →

@@ -8,6 +8,7 @@ import type {
   RepositoryContext,
   RepositoryProfile,
   RepositorySnapshotMode,
+  RequirementChallengeProposal,
 } from "../domain/types.js";
 import { QUALITY_PROFILES } from "../domain/qualityLevels.js";
 import type { QualityLevel } from "../domain/types.js";
@@ -264,6 +265,150 @@ ${requirement.constraints.map((c) => `- ${c}`).join("\n") || "(none provided)"}
 ${answeredBlock}
 
 Resolve this requirement's context now.`;
+
+  return { system, stableContext, volatile };
+}
+
+// ---------------------------------------------------------------------------
+// Requirement Challenge & Optimization (requirement-challenge-v1)
+// ---------------------------------------------------------------------------
+
+const CHALLENGE_TYPE_RULE = `
+Challenge types - assign exactly one to every proposal:
+- UNCLEAR: a statement is not precise enough to act on.
+- ASSUMPTION: the requirement quietly presupposes something that is not established as fact.
+- SOLUTION_CONSTRAINT: a concrete technical solution is named - judge whether it is genuinely mandatory or merely one possible way to reach the goal.
+- OPTIMIZATION: an alternative formulation or approach could serve the same goal more simply.
+- CONFLICT: the requirement contradicts a known constraint or repository evidence.
+- SCOPE_REDUCTION: part of the described scope does not appear necessary for the actual goal.
+- REUSE_OPPORTUNITY: an existing component could avoid or simplify new implementation.
+- ACCEPTANCE_IMPROVEMENT: an acceptance criterion is unclear, untestable, too technical, or not clearly tied to the goal.
+`.trim();
+
+const PROBLEM_VS_SOLUTION_RULE = `
+Separate the business goal from any proposed technical solution - this is the central judgment call of this stage:
+- A statement like "the system must remember earlier conversations" is a FUNCTIONAL requirement/goal.
+- A statement like "this must be stored in a vector database" is very likely a SOLUTION_ASSUMPTION or SOLUTION_CONSTRAINT layered on top of that goal - it is more specific than the goal requires, and other solutions (existing relational structures, full-text search, hybrid retrieval, an existing search service, an existing RAG component, ...) might satisfy the same goal, possibly more simply.
+- Do not assume a named technology is mandatory unless the source makes that clear (an explicit customer mandate, a documented company-wide architecture decision, a regulatory/compliance requirement, a contractual constraint, a fixed hosting/operational environment, a required integration interface). When genuinely mandatory, treat it as a legitimate CONSTRAINT and do not keep proposing to remove it.
+- Do not assume a named technology is unnecessary merely because alternatives exist - only propose SOLUTION_CONSTRAINT when the requirement's own stated goal does not actually require that specific technology, and say so concretely in "issue".
+- When unsure whether something was meant as a firm requirement or just an example/suggestion, do not guess - either propose it as SOLUTION_CONSTRAINT with your uncertainty reflected in a moderate confidence, or raise it as a missing-information gap if the ambiguity is material enough (see the clarification rules below).
+`.trim();
+
+const CHALLENGE_REPOSITORY_RULE = `
+Repository evidence as input to Challenge (EXISTING_SYSTEM mode) - use the repository profile and file contents already provided above the same way the Assumption & Clarification stage does, to recognize REUSE_OPPORTUNITY and OPTIMIZATION proposals:
+- A requirement asking to build something that already exists (a service, a data model, an auth mechanism, an integration) is a REUSE_OPPORTUNITY - cite the real evidence (file path/symbol) that shows it already exists.
+- A named technology where the repository already has a working, sufficient alternative can be an OPTIMIZATION or SOLUTION_CONSTRAINT candidate - but repository evidence may only ever support a TECHNICAL argument. It may never be used to argue that the customer's underlying business need itself is unnecessary - a technical alternative existing does not mean the requirement is pointless.
+- This is NOT a second Requirement Impact Analysis - use the repository profile and evidence you already have; do not invent new analysis depth beyond what is needed to support or reject a specific proposal. The detailed Impact Analysis happens later, after the optimized requirement is approved.
+- Never invent a file path, symbol, component, or library that is not actually present in the provided repository context.
+`.trim();
+
+const CHALLENGE_MATERIAL_CHANGE_RULE = `
+You propose - the user decides. You never apply a change yourself; every proposal starts PENDING and only becomes part of the requirement once a human explicitly accepts (or edits) it. This matters especially for anything that would be a material change if accepted:
+- removing or adding a technical constraint, a scope reduction or expansion, a change to a functional requirement, a change to an acceptance criterion with real business meaning, a change to integration requirements, security/auth, data handling, deployment requirements, or compliance requirements.
+Purely linguistic normalization (clearer wording with the exact same meaning) does not need a proposal - only raise a proposal when the underlying meaning could actually change.
+`.trim();
+
+const CHALLENGE_OPTIMIZATION_PRINCIPLE_RULE = `
+Optimization principle: aim to reach the stated business goal with as little unnecessary technical scope as possible and as much reuse as reasonable - this does NOT mean "always pick the cheapest option". Weigh functional fitness, maintainability, security, privacy, performance, scalability, operability, testability, existing architecture, and long-term changeability. "Schlank" (lean) means avoiding unnecessary complexity, not avoiding functionality - never propose SCOPE_REDUCTION that would actually reduce the delivered business value, only scope that does not serve the stated goal at all.
+Judge every production method and technology on its own merits for this specific case - never have a standing preference for or against AI-native development, classical development, n8n, Intrexx, a specific database technology, or a specific LLM. That comparison happens later, in the separate Technology Fit stage - your job here is only to state the goal and the genuinely necessary constraints as neutrally as possible.
+`.trim();
+
+const CHALLENGE_CLARIFICATION_RULE = `
+Clarifications vs. optimization - these are different things:
+- A CLARIFICATION (missingInformation with classification CLARIFICATION_REQUIRED) means a fachlich belastbare requirement is not possible at all without an answer.
+- An OPTIMIZATION/SOLUTION_CONSTRAINT/SCOPE_REDUCTION/REUSE_OPPORTUNITY proposal means the requirement is workable as stated, but a better or leaner formulation or approach may exist.
+Apply the exact same automation-first discipline as the Assumption & Clarification stage before ever raising a new missing-information gap here: check the original requirement, the normalized requirement, acceptance criteria, known constraints, prior user clarifications, the repository snapshot, the technical project profile, and repository evidence, in that order, and prefer a plausible, risk-appropriate ASSUMPTION (via the assumptions array, using the exact same shape/discipline as before) over a question whenever one is defensible. A missing-information gap here should be rare - most gaps belong in a proposal or an assumption instead.
+`.trim();
+
+const NO_NUMBERS_RULE = `
+This stage runs BEFORE Bottom-up Effort, Base DU, Technology Fit, Commercial DU, and Pricing - none of those numbers exist yet at this point, so you must never state or imply one: no Development Unit count, no hours, no percentage effort/cost savings, no price, and no technology-fit percentage, anywhere in analysis, proposals, rationale, or evidence descriptions. Describe expectedImpact only directionally (LOWER/SAME/HIGHER/UNKNOWN, or BETTER/SAME/WORSE/UNKNOWN for maintainability) - never as a number.
+`.trim();
+
+function formatDecidedChallengeProposals(proposals: RequirementChallengeProposal[]): string {
+  const decided = proposals.filter((p) => p.status !== "PENDING");
+  if (decided.length === 0) return "(none yet)";
+  return decided
+    .map(
+      (p) =>
+        `- [${p.status}] type=${p.type} "${p.originalText}" -> "${p.status === "EDITED" && p.editedChange ? p.editedChange : p.proposedChange}"`,
+    )
+    .join("\n");
+}
+
+/**
+ * Requirement Challenge & Optimization - runs after normalization
+ * (buildContextResolutionPrompt) has fully resolved (no open clarifications)
+ * and before the Requirement Impact Analysis / assessment call. Separates
+ * business goal from proposed technical solution and surfaces reviewable
+ * proposals; never applies a change itself and never states a DU/effort/
+ * price/technology-fit number (see scoring/requirementChallengeEngine.ts for
+ * how the application turns a user's decision into the actual requirement).
+ */
+export function buildRequirementChallengePrompt(
+  originalRequirement: Requirement,
+  normalizedRequirement: Requirement,
+  profile: RepositoryProfile,
+  context: RepositoryContext,
+  knowledge: ResolvedRequirementKnowledge,
+  existingProposals: RequirementChallengeProposal[],
+  qualityLevel: QualityLevel,
+  mode: RepositorySnapshotMode = "EXISTING_SYSTEM",
+): PromptParts {
+  const system = `You are running the "Requirement Challenge & Optimization" stage of the ISIFIVE DU Calculator, after the requirement has been normalized and before any Requirement Impact Analysis, effort estimation, or DU scoring happens. Your job is NOT to design the final implementation and NOT to redo the Assumption & Clarification stage - it is to check whether the normalized requirement, as currently understood, is actually the leanest and most fachlich sinnvoll description of what needs to be achieved, by separating the underlying business goal from any technical solution the requirement text already proposes.
+
+${QUALITY_PROFILES[qualityLevel].rationaleGuidance}
+
+${PROBLEM_VS_SOLUTION_RULE}
+
+${CHALLENGE_TYPE_RULE}
+
+${CHALLENGE_REPOSITORY_RULE}
+
+${CHALLENGE_MATERIAL_CHANGE_RULE}
+
+${CHALLENGE_OPTIMIZATION_PRINCIPLE_RULE}
+
+${CHALLENGE_CLARIFICATION_RULE}
+
+${NO_NUMBERS_RULE}
+
+${EVIDENCE_RULES}
+
+${GERMAN_OUTPUT_RULE}
+${mode === "GREENFIELD" ? `\n${GREENFIELD_MODE_NOTE}\n` : ""}
+Produce: your analysis (the underlying goal, a solution-independent problem statement, and how solution-specific the requirement currently reads), a list of concrete proposals (empty is a perfectly normal outcome when the requirement is already lean and clear), any assumptions you propose (same shape/discipline as the Assumption & Clarification stage), and any genuinely new missing-information gaps. Do not repeat a proposal that was already REJECTED below unless you have genuinely new evidence for it - say so explicitly in the proposal's rationale if you do.
+
+The repository profile and file contents are provided first, below, as reference material.`;
+
+  const stableContext = `REPOSITORY PROFILE (already analyzed):
+${JSON.stringify(profile, null, 2)}
+
+${formatRepositoryContext(context)}`;
+
+  const volatile = `ORIGINAL REQUIREMENT (verbatim, as submitted):
+Title: ${originalRequirement.title}
+
+Description:
+${originalRequirement.description}
+
+NORMALIZED REQUIREMENT (current working draft you are challenging):
+Title: ${normalizedRequirement.title}
+
+Description:
+${normalizedRequirement.description}
+
+Acceptance Criteria:
+${normalizedRequirement.acceptanceCriteria.map((c) => `- ${c}`).join("\n") || "(none)"}
+
+Constraints:
+${normalizedRequirement.constraints.map((c) => `- ${c}`).join("\n") || "(none)"}
+
+${formatKnowledge(knowledge)}
+
+PREVIOUSLY DECIDED CHALLENGE PROPOSALS (do not re-propose a REJECTED one without genuinely new evidence; ACCEPTED/EDITED ones are already reflected in the normalized requirement above):
+${formatDecidedChallengeProposals(existingProposals)}
+
+Challenge this requirement now.`;
 
   return { system, stableContext, volatile };
 }

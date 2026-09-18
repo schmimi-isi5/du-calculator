@@ -41,8 +41,21 @@ requirementRouter.post("/score", asyncHandler(async (req, res) => {
     });
     return;
   }
+  // Requirement Challenge & Optimization (requirement-challenge-v1): scoring
+  // must only ever see the version the user explicitly approved, never the
+  // raw original or any transient UI/editing state. A context that predates
+  // this feature has approvalStatus defaulting to "APPROVED" with
+  // approvedRequirement still null (see db/migrate.ts) - falls back to
+  // `requirement` so those legacy rows keep working unchanged.
+  if (requirementContext.approvalStatus !== "APPROVED") {
+    res.status(400).json({
+      error: "This requirement has not been approved yet. Run Requirement Challenge and approve it before scoring.",
+    });
+    return;
+  }
 
-  const { snapshotId, requirement } = requirementContext;
+  const { snapshotId } = requirementContext;
+  const requirement = requirementContext.approvedRequirement ?? requirementContext.requirement;
   const snapshot = await store.getSnapshot(snapshotId);
   if (!snapshot || snapshot.status !== "SNAPSHOT_CREATED" || !snapshot.profile) {
     res.status(400).json({ error: "Repository has not been successfully analyzed yet." });

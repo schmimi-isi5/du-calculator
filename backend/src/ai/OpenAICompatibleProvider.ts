@@ -17,6 +17,7 @@ import {
   ContextResolutionOutputSchema,
   RepositoryProfileSchema,
   RequirementAssessmentSchema,
+  RequirementChallengeOutputSchema,
 } from "../domain/schemas.js";
 import type {
   AIProviderName,
@@ -28,6 +29,8 @@ import type {
   RepositoryProfile,
   RepositorySnapshotMode,
   RequirementAssessment,
+  RequirementChallengeOutput,
+  RequirementChallengeProposal,
 } from "../domain/types.js";
 import type { AIProvider, RepositoryIdentity, ResolvedRequirementKnowledge, UsageContext } from "./AIProvider.js";
 import { AIProviderError } from "./AIProvider.js";
@@ -36,6 +39,7 @@ import {
   buildAssessmentPrompt,
   buildContextResolutionPrompt,
   buildRepositoryAnalysisPrompt,
+  buildRequirementChallengePrompt,
   type PromptParts,
 } from "./prompts.js";
 import { toOpenAIStrictJsonSchema } from "./openAIStrictSchema.js";
@@ -141,6 +145,38 @@ export class OpenAICompatibleProvider implements AIProvider {
       "assessRequirement",
       model,
       "RequirementAssessment",
+      usageContext,
+    );
+  }
+
+  async challengeRequirement(
+    originalRequirement: Requirement,
+    normalizedRequirement: Requirement,
+    profile: RepositoryProfile,
+    context: RepositoryContext,
+    knowledge: ResolvedRequirementKnowledge,
+    existingProposals: RequirementChallengeProposal[],
+    qualityLevel: QualityLevel,
+    model: string,
+    usageContext: UsageContext,
+    mode?: RepositorySnapshotMode,
+  ): Promise<RequirementChallengeOutput> {
+    const prompt = buildRequirementChallengePrompt(
+      originalRequirement,
+      normalizedRequirement,
+      profile,
+      context,
+      knowledge,
+      existingProposals,
+      qualityLevel,
+      mode,
+    );
+    return this.complete<RequirementChallengeOutput>(
+      prompt,
+      RequirementChallengeOutputSchema,
+      "challengeRequirement",
+      model,
+      "RequirementChallengeOutput",
       usageContext,
     );
   }

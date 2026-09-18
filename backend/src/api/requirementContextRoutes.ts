@@ -19,15 +19,28 @@ import {
   ClarificationNotFoundError,
   type AssumptionAction,
 } from "../scoring/clarificationGate.js";
+import {
+  applyChallengeProposalAction,
+  ChallengeProposalNotFoundError,
+  checkChallengeApprovalGate,
+  evaluateApprovalStatus,
+  type ChallengeProposalAction,
+} from "../scoring/requirementChallengeEngine.js";
 import { store } from "../store/PostgresScoringStore.js";
 import { asyncHandler } from "./asyncHandler.js";
 import { errorCause } from "./errorCause.js";
 import { parseRequirement } from "./requirementInput.js";
-import { RequirementContextError, runContextResolution, type ModelSelection } from "./requirementContextService.js";
+import {
+  RequirementContextError,
+  runContextResolution,
+  runRequirementChallenge,
+  type ModelSelection,
+} from "./requirementContextService.js";
 
 export const requirementContextRouter = Router();
 
 const ASSUMPTION_ACTIONS: readonly AssumptionAction[] = ["CONFIRM", "REJECT", "EDIT"];
+const CHALLENGE_PROPOSAL_ACTIONS: readonly ChallengeProposalAction[] = ["ACCEPT", "REJECT", "EDIT"];
 const DEFAULT_MODEL_SELECTION: ModelSelection = { kind: "default" };
 
 // Runs (or re-runs) resolution and responds, sharing one error-handling
@@ -220,17 +233,148 @@ requirementContextRouter.patch(
       return;
     }
 
-    const updated: RequirementContext = {
+    const nextRequirement = {
+      ...context.requirement,
+      title: title !== undefined ? (title as string).trim() : context.requirement.title,
+      acceptanceCriteria: parsedAcceptanceCriteria ?? context.requirement.acceptanceCriteria,
+      constraints: parsedConstraints ?? context.requirement.constraints,
+    };
+    const withRequirement: RequirementContext = {
       ...context,
-      requirement: {
-        ...context.requirement,
-        title: title !== undefined ? (title as string).trim() : context.requirement.title,
-        acceptanceCriteria: parsedAcceptanceCriteria ?? context.requirement.acceptanceCriteria,
-        constraints: parsedConstraints ?? context.requirement.constraints,
-      },
+      requirement: nextRequirement,
       updatedAt: new Date().toISOString(),
     };
+    // A manual edit changes the draft, so an already-APPROVED context must
+    // not silently stay APPROVED (spec section 40: editing after approval
+    // invalidates it) - approvedRequirement itself is left untouched here;
+    // a fresh explicit /approve call is required to refreeze it.
+    const updated: RequirementContext = {
+      ...withRequirement,
+      approvalStatus: evaluateApprovalStatus(withRequirement),
+    };
 
+    await store.saveRequirementContext(updated);
+    res.status(200).json(updated);
+  }),
+);
+
+// Runs the Requirement Challenge AI call (spec: requirement-challenge-v1) -
+// separates the underlying goal from any proposed technical solution and
+// proposes optimization/clarification proposals. Requires the context to be
+// fully RESOLVED first (no open clarifications from normalization).
+requirementContextRouter.post(
+  "/:id/challenge",
+  asyncHandler(async (req, res) => {
+    const id = req.params.id;
+    if (!id) {
+      res.status(400).json({ error: "id is required." });
+      return;
+    }
+    const context = await store.getRequirementContext(id);
+    if (!context) {
+      res.status(404).json({ error: "Requirement context not found." });
+      return;
+    }
+
+    try {
+      const updated = await runRequirementChallenge(context);
+      res.status(200).json(updated);
+    } catch (err) {
+      if (err instanceof RequirementContextError) {
+        res.status(400).json({ error: err.message });
+        return;
+      }
+      if (err instanceof AIProviderError) {
+        logger.error("Requirement challenge failed", {
+          requirementContextId: id,
+          error: err.message,
+          code: err.code,
+          cause: errorCause(err),
+        });
+        res.status(502).json({ error: err.message });
+        return;
+      }
+      throw err;
+    }
+  }),
+);
+
+// Records the user's ACCEPT/REJECT/EDIT decision on one Challenge proposal.
+// Never re-runs the AI (mirrors the assumption-action endpoint above) - the
+// working requirement and approval status are recomputed deterministically.
+requirementContextRouter.post(
+  "/:id/challenge/proposals/:proposalId",
+  asyncHandler(async (req, res) => {
+    const { id, proposalId } = req.params;
+    const { action, editedText } = req.body ?? {};
+
+    if (!id || !proposalId) {
+      res.status(400).json({ error: "id and proposalId are required." });
+      return;
+    }
+    if (typeof action !== "string" || !CHALLENGE_PROPOSAL_ACTIONS.includes(action as ChallengeProposalAction)) {
+      res.status(400).json({ error: `action must be one of: ${CHALLENGE_PROPOSAL_ACTIONS.join(", ")}.` });
+      return;
+    }
+
+    const context = await store.getRequirementContext(id);
+    if (!context) {
+      res.status(404).json({ error: "Requirement context not found." });
+      return;
+    }
+
+    let updated: RequirementContext;
+    try {
+      updated = applyChallengeProposalAction(
+        context,
+        proposalId,
+        action as ChallengeProposalAction,
+        typeof editedText === "string" ? editedText : undefined,
+      );
+    } catch (err) {
+      if (err instanceof ChallengeProposalNotFoundError) {
+        res.status(404).json({ error: err.message });
+        return;
+      }
+      res.status(400).json({ error: err instanceof Error ? err.message : "Invalid challenge proposal action." });
+      return;
+    }
+
+    await store.saveRequirementContext(updated);
+    res.status(200).json(updated);
+  }),
+);
+
+// Explicit approval gate (spec section 38-40): freezes the current working
+// requirement as approvedRequirement, the only version /score is allowed to
+// read. Rejected with 400 + reasons if the gate does not pass - the AI is
+// never allowed to auto-approve on the user's behalf.
+requirementContextRouter.post(
+  "/:id/approve",
+  asyncHandler(async (req, res) => {
+    const id = req.params.id;
+    if (!id) {
+      res.status(400).json({ error: "id is required." });
+      return;
+    }
+    const context = await store.getRequirementContext(id);
+    if (!context) {
+      res.status(404).json({ error: "Requirement context not found." });
+      return;
+    }
+
+    const gate = checkChallengeApprovalGate(context);
+    if (!gate.canApprove) {
+      res.status(400).json({ error: "Freigabe nicht möglich.", reasons: gate.reasons });
+      return;
+    }
+
+    const updated: RequirementContext = {
+      ...context,
+      approvalStatus: "APPROVED",
+      approvedRequirement: { ...context.requirement },
+      updatedAt: new Date().toISOString(),
+    };
     await store.saveRequirementContext(updated);
     res.status(200).json(updated);
   }),

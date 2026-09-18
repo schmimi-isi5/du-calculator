@@ -1523,6 +1523,42 @@ code.file-path {
   margin-top: 4px;
 }
 
+/* Requirement Challenge & Optimization (requirement-challenge-v1) */
+.optimized-requirement-preview {
+  background: #f6f8f7;
+  border-radius: 10px;
+  padding: 12px;
+  font-size: 12px;
+}
+
+.optimized-requirement-preview p {
+  margin: 4px 0 8px;
+  color: var(--ink);
+}
+
+.optimized-requirement-preview-label {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--muted);
+  margin-top: 8px;
+}
+
+.impact-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0;
+}
+
+.impact-badge {
+  font-size: 10px;
+  font-weight: 700;
+  background: #f2f6f4;
+  color: var(--muted);
+  padding: 2px 7px;
+  border-radius: 6px;
+}
+
 .report-header h3 {
   margin: 0 0 4px;
   font-size: 18px;

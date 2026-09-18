@@ -22,6 +22,15 @@ import type {
   EffortWorkPackageCategory,
   WorkPackageReuseLevel,
 } from "./effort.js";
+import type {
+  ChallengeEvidenceSourceType,
+  ChallengeImpactDirection,
+  ChallengeMaintainabilityImpact,
+  RequirementApprovalStatus,
+  RequirementChallengeProposalStatus,
+  RequirementChallengeType,
+  SolutionSpecificityLevel,
+} from "./requirementChallenge.js";
 
 export type RepositoryStatus =
   | "NOT_ANALYZED"
@@ -960,6 +969,126 @@ export interface ContextResolutionOutput {
 
 export type RequirementContextStatus = "AWAITING_CLARIFICATION" | "RESOLVED" | "ERROR";
 
+// ---------------------------------------------------------------------------
+// Requirement Challenge & Optimization (requirement-challenge-v1)
+//
+// A fachliche preparation stage between Requirement Normalization and the
+// five calculation models (A-E) - see scoring/requirementChallengeEngine.ts.
+// It is NOT a sixth model and never touches DU/effort/price: it produces the
+// approved input those models then consume unchanged. Core idea: a customer
+// requirement often mixes a business goal with proposed (and possibly
+// unnecessary) technical solutions - Requirement Challenge surfaces that
+// distinction as reviewable proposals; the AI never applies a material
+// change on its own, the user always decides (ACCEPT/REJECT/EDIT).
+// ---------------------------------------------------------------------------
+
+export type {
+  ChallengeEvidenceSourceType,
+  ChallengeImpactDirection,
+  ChallengeMaintainabilityImpact,
+  RequirementApprovalStatus,
+  RequirementChallengeProposalStatus,
+  RequirementChallengeType,
+  SolutionSpecificityLevel,
+} from "./requirementChallenge.js";
+export {
+  CHALLENGE_EVIDENCE_SOURCE_TYPES,
+  CHALLENGE_IMPACT_DIRECTIONS,
+  CHALLENGE_MAINTAINABILITY_IMPACTS,
+  REQUIREMENT_APPROVAL_STATUSES,
+  REQUIREMENT_CHALLENGE_PROPOSAL_STATUSES,
+  REQUIREMENT_CHALLENGE_TYPES,
+  REQUIREMENT_PREPARATION_VERSION,
+  SOLUTION_SPECIFICITY_LEVELS,
+} from "./requirementChallenge.js";
+
+export interface ChallengeEvidence {
+  sourceType: ChallengeEvidenceSourceType;
+  /** A file path for REPOSITORY, an acceptance-criterion/constraint excerpt for the requirement-shaped sources, an assumption id for ASSUMPTION, etc. */
+  reference: string;
+  description: string;
+  status: EvidenceStatus;
+}
+
+export interface RequirementChallengeExpectedImpact {
+  scope: ChallengeImpactDirection;
+  complexity: ChallengeImpactDirection;
+  maintainability: ChallengeMaintainabilityImpact;
+  reuse: ChallengeImpactDirection;
+  implementationFreedom: ChallengeImpactDirection;
+}
+
+/** Raw shape the AI produces for one proposal - the app assigns id/status/timestamps (same pattern as KnownFact/Assumption/MissingInformation). */
+export interface RequirementChallengeProposalInput {
+  type: RequirementChallengeType;
+  title: string;
+  /** The exact (or closely paraphrased) source text this proposal is about - used both for display and, for ACCEPTANCE_IMPROVEMENT/SOLUTION_CONSTRAINT, to locate the matching acceptanceCriteria/constraints entry (see buildOptimizedRequirement). */
+  originalText: string;
+  issue: string;
+  proposedChange: string;
+  rationale: string;
+  evidence: ChallengeEvidence[];
+  expectedImpact: RequirementChallengeExpectedImpact;
+  confidence: number;
+}
+
+/**
+ * One reviewable Challenge proposal - PENDING until the user decides.
+ * REJECTED proposals are kept (never deleted) so they are not silently
+ * re-applied and so a repeated Challenge run can deduplicate against them
+ * (see scoring/requirementChallengeEngine.ts dedupeChallengeProposals).
+ */
+export interface RequirementChallengeProposal extends RequirementChallengeProposalInput {
+  id: string;
+  status: RequirementChallengeProposalStatus;
+  /** The user's own replacement text when status === "EDITED" - takes precedence over proposedChange wherever a decided proposal is applied. */
+  editedChange: string | null;
+  decidedAt: string | null;
+  createdAt: string;
+}
+
+export interface RequirementChallengeAnalysis {
+  goal: string;
+  problemStatement: string;
+  solutionSpecificity: SolutionSpecificityLevel;
+}
+
+/**
+ * Raw AIProvider.challengeRequirement output. Deliberately reuses the exact
+ * Assumption/MissingInformation shapes from ContextResolutionOutput (not a
+ * parallel structure) - Challenge can propose its own plausible assumptions
+ * (spec section 22) and its own missing-information gaps (spec section 31's
+ * "clarifications"/"remainingInformationGaps" are both just
+ * CLARIFICATION_REQUIRED vs. UNKNOWN_NON_BLOCKING classifications of the
+ * same MissingInformation shape) - both get merged into the SAME
+ * RequirementContext.assumptions/missingInformation/clarifications arrays
+ * the normalization phase already populates, through the same
+ * clarification gate. Never states a DU, price, effort, or technology-fit
+ * number.
+ */
+export interface RequirementChallengeOutput {
+  analysis: RequirementChallengeAnalysis;
+  proposals: RequirementChallengeProposalInput[];
+  assumptions: Omit<Assumption, "id" | "status">[];
+  missingInformation: Omit<MissingInformation, "id">[];
+}
+
+/**
+ * DRAFT: normalized, Challenge not yet run or still pending decisions.
+ * CHALLENGE_IN_PROGRESS: Challenge has run and at least one proposal is
+ * still PENDING, or a Challenge-raised clarification is still open.
+ * READY_FOR_APPROVAL: every proposal is decided, no blocking clarification
+ * remains, and the draft has a goal + at least one acceptance criterion.
+ * APPROVED: the user explicitly froze the current draft into
+ * approvedRequirement (spec: "die vereinbarte Grundlage für die aktuelle
+ * Bewertung" - NOT a customer sign-off or contractual approval). Editing
+ * the draft again after APPROVED moves this back to READY_FOR_APPROVAL
+ * (see api/requirementContextRoutes.ts) - approvedRequirement itself stays
+ * untouched until a fresh /approve call, so an already-created
+ * ScoringResult (which took its own immutable copy at score time) is never
+ * affected either way.
+ */
+
 /**
  * How thoroughly one pass (resolution + assessment) is run - chosen once
  * when a requirement is first submitted and then fixed for that
@@ -978,7 +1107,20 @@ export type QualityLevel = "quick" | "standard" | "thorough";
 export interface RequirementContext {
   id: string;
   snapshotId: string;
+  /** The CURRENT working draft - normalized on the first round, then re-derived from normalizedRequirement + decided challenge proposals every time a proposal is accepted/rejected/edited (see buildOptimizedRequirement), and still directly editable via PATCH .../requirement for final touch-ups. This is what a Kunde-facing report/history entry ultimately reflects once approved. */
   requirement: Requirement;
+  /** Immutable - exactly what was submitted, before any AI normalization or Challenge decision. Never overwritten (spec: "Original Requirement ist unveränderliche Quelle"). */
+  originalRequirement: Requirement;
+  /** Immutable snapshot taken right after the first successful AI normalization, before any Challenge proposal is applied - the base buildOptimizedRequirement always starts from. Null only for a context still on its very first (unresolved) round, or a legacy context that predates this field. */
+  normalizedRequirement: Requirement | null;
+  /** Frozen copy of `requirement` at the moment of the last successful /approve call. Null until first approved. This, never the mutable `requirement`, is what scoring reads (with a `requirement` fallback for legacy contexts - see api/requirementRoutes.ts). */
+  approvedRequirement: Requirement | null;
+  approvalStatus: RequirementApprovalStatus;
+  /** From the most recent Challenge run - null before Challenge has ever run. */
+  challengeAnalysis: RequirementChallengeAnalysis | null;
+  challengeProposals: RequirementChallengeProposal[];
+  /** Null for a context created before this feature - see the migration in db/migrate.ts. `"requirement-challenge-v1"` for every new context, independent of calculationModelVersion (Requirement Challenge is a preparation stage, not a Commercial-Model version). */
+  requirementPreparationVersion: string | null;
   qualityLevel: QualityLevel;
   /** Which model this context is resolved with - see domain/models.ts. Fixed once chosen, same as qualityLevel. */
   model: string;

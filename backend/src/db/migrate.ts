@@ -75,6 +75,33 @@ ALTER TABLE requirement_contexts ADD COLUMN IF NOT EXISTS quality_level TEXT NOT
 -- existed.
 ALTER TABLE requirement_contexts ADD COLUMN IF NOT EXISTS model TEXT NOT NULL DEFAULT 'claude-opus-5';
 
+-- Requirement Challenge & Optimization (requirement-challenge-v1, see
+-- domain/types.ts RequirementContext and scoring/requirementChallengeEngine.ts):
+-- original_requirement is the immutable, exactly-as-submitted input (never
+-- overwritten by AI normalization or challenge decisions); normalized_requirement
+-- is the immutable snapshot right after the first AI normalization pass,
+-- before any challenge proposal is applied; approved_requirement is frozen
+-- once the user explicitly approves (see the new /approve endpoint) - only
+-- this field, never "requirement", is used as scoring input. "requirement"
+-- itself is unchanged in shape - it keeps being the CURRENT working draft,
+-- now additionally mutated by accepted/edited challenge proposals.
+--
+-- Existing rows predate this feature and never went through a Challenge
+-- step - approval_status defaults to 'APPROVED' so they remain immediately
+-- scorable exactly as before (spec: "historisch freigegebene
+-- Assessment-Grundlage"), while original_requirement/normalized_requirement/
+-- approved_requirement stay NULL (the application falls back to "requirement"
+-- for those). requirement_preparation_version stays NULL for these rows,
+-- distinguishing them from new contexts (which explicitly set
+-- 'requirement-challenge-v1') without forcing a retroactive Challenge run.
+ALTER TABLE requirement_contexts ADD COLUMN IF NOT EXISTS original_requirement JSONB;
+ALTER TABLE requirement_contexts ADD COLUMN IF NOT EXISTS normalized_requirement JSONB;
+ALTER TABLE requirement_contexts ADD COLUMN IF NOT EXISTS approved_requirement JSONB;
+ALTER TABLE requirement_contexts ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'APPROVED';
+ALTER TABLE requirement_contexts ADD COLUMN IF NOT EXISTS challenge_analysis JSONB;
+ALTER TABLE requirement_contexts ADD COLUMN IF NOT EXISTS challenge_proposals JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE requirement_contexts ADD COLUMN IF NOT EXISTS requirement_preparation_version TEXT;
+
 CREATE TABLE IF NOT EXISTS scoring_results (
   id UUID PRIMARY KEY,
   snapshot_id UUID NOT NULL REFERENCES repository_snapshots(id),
