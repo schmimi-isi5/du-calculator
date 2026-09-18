@@ -25,18 +25,14 @@ function formatModelPrice(m: SelectableModel): string | null {
 }
 
 interface Props {
-  title: string;
   description: string;
-  acceptanceCriteria: string;
   constraints: string;
   qualityLevel: QualityLevel;
   model: string | null;
   privacyMode: "local-only" | undefined;
   canSubmit: boolean;
   loading: boolean;
-  onChangeTitle: (v: string) => void;
   onChangeDescription: (v: string) => void;
-  onChangeAcceptanceCriteria: (v: string) => void;
   onChangeConstraints: (v: string) => void;
   onChangeQualityLevel: (v: QualityLevel) => void;
   onChangeModel: (v: string) => void;
@@ -45,18 +41,14 @@ interface Props {
 }
 
 export function RequirementPanel({
-  title,
   description,
-  acceptanceCriteria,
   constraints,
   qualityLevel,
   model,
   privacyMode,
   canSubmit,
   loading,
-  onChangeTitle,
   onChangeDescription,
-  onChangeAcceptanceCriteria,
   onChangeConstraints,
   onChangeQualityLevel,
   onChangeModel,
@@ -124,45 +116,30 @@ export function RequirementPanel({
   return (
     <div className="card">
       <h2>Anforderung erfassen</h2>
+      <p className="panel-intro">
+        Ein Feld genügt: Titel, Akzeptanzkriterien und Randbedingungen leitet die KI direkt aus diesem Text ab -
+        Sie können das Ergebnis danach prüfen und anpassen.
+      </p>
 
-      <label htmlFor="reqTitle">Titel</label>
-      <input
-        id="reqTitle"
-        value={title}
-        onChange={(e) => onChangeTitle(e.target.value)}
-        placeholder="Kurzer, eindeutiger Name für diese Anforderung"
-      />
-
-      <label htmlFor="reqDescription">Beschreibung</label>
+      <label htmlFor="reqDescription">Anforderung</label>
       <textarea
         id="reqDescription"
         className="textarea-large"
         value={description}
         onChange={(e) => onChangeDescription(e.target.value)}
-        placeholder="Was soll umgesetzt werden, und warum? Je konkreter, desto weniger Rückfragen."
+        placeholder="Was soll umgesetzt werden, für wen, und warum? Fügen Sie ruhig eine Kunden-E-Mail oder Notiz im Original-Wortlaut ein - je konkreter, desto weniger Rückfragen."
       />
 
-      <div className="row">
-        <div>
-          <label htmlFor="reqAcceptance">Akzeptanzkriterien (eine pro Zeile)</label>
-          <textarea
-            id="reqAcceptance"
-            className="textarea-large"
-            value={acceptanceCriteria}
-            onChange={(e) => onChangeAcceptanceCriteria(e.target.value)}
-          />
-        </div>
-        <div>
-          <label htmlFor="reqConstraints">Randbedingungen (eine pro Zeile, optional)</label>
-          <textarea
-            id="reqConstraints"
-            className="textarea-large"
-            value={constraints}
-            onChange={(e) => onChangeConstraints(e.target.value)}
-            placeholder="Datenschutz, Performance, Ausschlüsse …"
-          />
-        </div>
-      </div>
+      <details className="inline-details">
+        <summary>Ergänzende Hinweise (optional)</summary>
+        <label htmlFor="reqConstraints">Bekannte Randbedingungen (eine pro Zeile)</label>
+        <textarea
+          id="reqConstraints"
+          value={constraints}
+          onChange={(e) => onChangeConstraints(e.target.value)}
+          placeholder="Datenschutz, Performance, Ausschlüsse … - wird mit den KI-Vorschlägen zusammengeführt."
+        />
+      </details>
 
       <label htmlFor="qualityLevel">Qualitätsstufe</label>
       <div className="quality-level-picker" id="qualityLevel">
@@ -261,7 +238,7 @@ export function RequirementPanel({
         </button>
         {!canSubmit && !loading && (
           <span style={{ fontSize: 12, color: "var(--muted)" }}>
-            Zuerst ein Repository analysieren oder Greenfield wählen, dann Titel und Beschreibung ausfüllen.
+            Zuerst ein Repository analysieren oder Greenfield wählen, dann die Anforderung beschreiben.
           </span>
         )}
       </div>

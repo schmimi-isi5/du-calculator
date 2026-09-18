@@ -174,6 +174,68 @@ requirementContextRouter.get(
   }),
 );
 
+function toOptionalStringArray(value: unknown): string[] | undefined | null {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) return null;
+  const items = value.map((entry) => (typeof entry === "string" ? entry.trim() : null));
+  if (items.some((entry) => entry === null)) return null;
+  return (items as string[]).filter((entry) => entry.length > 0);
+}
+
+// Lets the user review/correct the title and AI-derived acceptance
+// criteria/constraints (see requirementContextService.ts
+// applyNormalizationToRequirement, which auto-fills them from the AI's
+// normalization on the first resolution round) before scoring - a plain data
+// update, deliberately NOT an AI call, so reviewing/editing costs nothing
+// and never re-triggers resolution (same reasoning as the assumption-action
+// endpoint below: the user re-scores explicitly when ready).
+requirementContextRouter.patch(
+  "/:id/requirement",
+  asyncHandler(async (req, res) => {
+    const id = req.params.id;
+    if (!id) {
+      res.status(400).json({ error: "id is required." });
+      return;
+    }
+
+    const context = await store.getRequirementContext(id);
+    if (!context) {
+      res.status(404).json({ error: "Requirement context not found." });
+      return;
+    }
+
+    const { title, acceptanceCriteria, constraints } = req.body ?? {};
+    if (title !== undefined && (typeof title !== "string" || title.trim().length === 0)) {
+      res.status(400).json({ error: "title must be a non-empty string if provided." });
+      return;
+    }
+    const parsedAcceptanceCriteria = toOptionalStringArray(acceptanceCriteria);
+    if (parsedAcceptanceCriteria === null) {
+      res.status(400).json({ error: "acceptanceCriteria must be an array of strings if provided." });
+      return;
+    }
+    const parsedConstraints = toOptionalStringArray(constraints);
+    if (parsedConstraints === null) {
+      res.status(400).json({ error: "constraints must be an array of strings if provided." });
+      return;
+    }
+
+    const updated: RequirementContext = {
+      ...context,
+      requirement: {
+        ...context.requirement,
+        title: title !== undefined ? (title as string).trim() : context.requirement.title,
+        acceptanceCriteria: parsedAcceptanceCriteria ?? context.requirement.acceptanceCriteria,
+        constraints: parsedConstraints ?? context.requirement.constraints,
+      },
+      updatedAt: new Date().toISOString(),
+    };
+
+    await store.saveRequirementContext(updated);
+    res.status(200).json(updated);
+  }),
+);
+
 interface ClarificationAnswerInput {
   clarificationId: string;
   answer: string;

@@ -188,6 +188,14 @@ Clarification questions must be decision-oriented, not generic:
 - Good example: "Über welchen stabilen Schlüssel kann Kommunikation über mehrere Dialoge hinweg demselben Kunden zugeordnet werden?" (relevant only if the repository shows no existing mechanism for this, and different answers materially change the data model, integration, and risk).
 `.trim();
 
+const NORMALIZATION_RULE = `
+Normalization output - this requirement may arrive as a single, unstructured block of free text (a customer email, a verbal note written down, an internal ticket) with no separate title/acceptance criteria/constraints given at all. Your normalization is what turns that into the structured shape the rest of the application (and a human reviewing it) works with:
+- suggestedTitle: a short, specific, German title (like a good ticket title) that would let someone recognize this requirement in a list a month from now - never generic ("Anforderung", "Feature-Wunsch").
+- acceptanceCriteria: concrete, testable criteria. If the text already states them, extract them as given (FACT). If it doesn't, DERIVE plausible ones from the stated objective/functional requirements (DERIVED) - do not leave this empty just because nothing was phrased as a bullet list. Only for a genuinely specific detail you cannot responsibly guess (a concrete threshold, an exact field, a specific integration), do not invent a fabricated value - state the criterion at the level of detail you can actually support, and raise the missing specific as its own information gap (via the normal FACT/DERIVED/ASSUMPTION/CLARIFICATION_REQUIRED classification below) instead of embedding a guess directly in the criterion text.
+- technicalConstraints: same discipline - extract what's stated, derive what's clearly implied (e.g. "muss ins bestehende System passen" implies integration constraints visible in the repository profile), never fabricate a specific technology/limit that was never mentioned or evidenced.
+- This is still normalization, not scoring: do not let deriving these tempt you into stating a DU class, a fit percentage, or an effort number here.
+`.trim();
+
 export function buildContextResolutionPrompt(
   requirement: Requirement,
   profile: RepositoryProfile,
@@ -219,8 +227,10 @@ ${QUESTION_QUALITY_RULE}
 ${EVIDENCE_RULES}
 
 ${GERMAN_OUTPUT_RULE}
+
+${NORMALIZATION_RULE}
 ${mode === "GREENFIELD" ? `\n${GREENFIELD_MODE_NOTE}\n` : ""}
-Produce: a normalization of the requirement (extraction only, no invented facts), the known facts you established, the assumptions you propose, and every information gap you detected with its classification and reasoning - including the ones you resolved yourself (FACT/DERIVED/ASSUMPTION/UNKNOWN_NON_BLOCKING) as well as any genuine CLARIFICATION_REQUIRED items. The application - not you - decides how many of the CLARIFICATION_REQUIRED items actually get asked; list all of them with accurate potentialScoreImpact so it can prioritize correctly.
+Produce: the normalization described above, the known facts you established, the assumptions you propose, and every information gap you detected with its classification and reasoning - including the ones you resolved yourself (FACT/DERIVED/ASSUMPTION/UNKNOWN_NON_BLOCKING) as well as any genuine CLARIFICATION_REQUIRED items. The application - not you - decides how many of the CLARIFICATION_REQUIRED items actually get asked; list all of them with accurate potentialScoreImpact so it can prioritize correctly.
 
 The repository profile and file contents are provided first, below, as reference material - the actual requirement to resolve follows after it.`;
 

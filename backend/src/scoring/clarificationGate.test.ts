@@ -61,6 +61,7 @@ function assumption(overrides: Partial<Omit<Assumption, "id" | "status">> = {}):
 function output(overrides: Partial<ContextResolutionOutput> = {}): ContextResolutionOutput {
   return {
     normalization: {
+      suggestedTitle: "",
       objective: "",
       businessGoal: "",
       functionalRequirements: [],

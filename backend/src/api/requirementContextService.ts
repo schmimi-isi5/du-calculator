@@ -14,7 +14,13 @@ import {
   type AutoRoutingCriteria,
 } from "../domain/models.js";
 import { DEFAULT_QUALITY_LEVEL, QUALITY_PROFILES } from "../domain/qualityLevels.js";
-import type { QualityLevel, RepositorySnapshot, Requirement, RequirementContext } from "../domain/types.js";
+import type {
+  QualityLevel,
+  RepositorySnapshot,
+  Requirement,
+  RequirementContext,
+  RequirementNormalization,
+} from "../domain/types.js";
 import { buildResolvedContextParts, hasPendingClarifications } from "../scoring/clarificationGate.js";
 import { getSetting, SETTINGS_KEYS } from "../store/AppSettingsStore.js";
 import { store } from "../store/PostgresScoringStore.js";
@@ -123,10 +129,22 @@ export async function runContextResolution(
 
   const parts = buildResolvedContextParts(output, priorClarifications, maxNewClarifications);
 
+  // The user now types one free-text description, with no separate title/
+  // acceptance-criteria fields (see api/requirementInput.ts). On the FIRST
+  // round only, adopt the AI's own normalization as the actual Requirement -
+  // its suggestedTitle becomes Requirement.title, and its derived
+  // acceptanceCriteria/technicalConstraints are merged into
+  // Requirement.acceptanceCriteria/constraints (deduplicated, alongside
+  // anything the user optionally typed into the constraints field
+  // themselves). A later round (answering a clarification) never overwrites
+  // this again, so it never silently discards an edit made via the
+  // requirement-review endpoint in between.
+  const effectiveRequirement = existing === null ? applyNormalizationToRequirement(requirement, output.normalization) : requirement;
+
   const context: RequirementContext = {
     id: contextId,
     snapshotId,
-    requirement,
+    requirement: effectiveRequirement,
     qualityLevel: effectiveQualityLevel,
     model: effectiveModel,
     normalization: output.normalization,
@@ -171,6 +189,38 @@ export async function resolveModelSelection(
     return resolveAutoModel(criteria, credentials, config.allowPremiumAutoFallback, registry);
   }
   return defaultModelId();
+}
+
+function dedupeTrimmed(values: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const raw of values) {
+    const value = raw.trim();
+    if (value.length === 0) continue;
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(value);
+  }
+  return result;
+}
+
+/**
+ * Turns the AI's own normalization into the actual Requirement, used only on
+ * the first resolution round (see call site above) - suggestedTitle replaces
+ * the placeholder title from requirementInput.ts, and the AI's derived
+ * acceptanceCriteria/technicalConstraints are merged with anything the user
+ * already typed (currently only constraints has a manual input field - see
+ * RequirementPanel.tsx) rather than replacing it, so a manual addition is
+ * never silently dropped.
+ */
+export function applyNormalizationToRequirement(requirement: Requirement, normalization: RequirementNormalization): Requirement {
+  return {
+    title: normalization.suggestedTitle.trim() || requirement.title,
+    description: requirement.description,
+    acceptanceCriteria: dedupeTrimmed([...requirement.acceptanceCriteria, ...normalization.acceptanceCriteria]),
+    constraints: dedupeTrimmed([...requirement.constraints, ...normalization.technicalConstraints]),
+  };
 }
 
 /**

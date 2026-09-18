@@ -1,5 +1,75 @@
 import { describe, expect, it } from "vitest";
-import { resolveModelSelection } from "./requirementContextService.js";
+import type { Requirement, RequirementNormalization } from "../domain/types.js";
+import { applyNormalizationToRequirement, resolveModelSelection } from "./requirementContextService.js";
+
+function buildRequirement(overrides: Partial<Requirement> = {}): Requirement {
+  return {
+    title: "Platzhalter-Titel",
+    description: "Kunden sollen ihre Rechnungen online einsehen können.",
+    acceptanceCriteria: [],
+    constraints: [],
+    ...overrides,
+  };
+}
+
+function buildNormalization(overrides: Partial<RequirementNormalization> = {}): RequirementNormalization {
+  return {
+    suggestedTitle: "Online-Rechnungseinsicht für Kunden",
+    objective: "",
+    businessGoal: "",
+    functionalRequirements: [],
+    nonFunctionalRequirements: [],
+    acceptanceCriteria: [],
+    technicalConstraints: [],
+    mentionedSystems: [],
+    mentionedDataSources: [],
+    mentionedIntegrations: [],
+    mentionedExistingComponents: [],
+    assumptionsAlreadyContainedInRequirement: [],
+    unresolvedInformation: [],
+    ...overrides,
+  };
+}
+
+describe("applyNormalizationToRequirement", () => {
+  it("replaces the placeholder title with the AI's suggestedTitle", () => {
+    const result = applyNormalizationToRequirement(buildRequirement(), buildNormalization());
+    expect(result.title).toBe("Online-Rechnungseinsicht für Kunden");
+  });
+
+  it("keeps the requirement's own title if suggestedTitle is blank", () => {
+    const result = applyNormalizationToRequirement(
+      buildRequirement({ title: "Bestehender Titel" }),
+      buildNormalization({ suggestedTitle: "  " }),
+    );
+    expect(result.title).toBe("Bestehender Titel");
+  });
+
+  it("never touches the description", () => {
+    const requirement = buildRequirement();
+    const result = applyNormalizationToRequirement(requirement, buildNormalization());
+    expect(result.description).toBe(requirement.description);
+  });
+
+  it("merges AI-derived acceptance criteria with any manually provided ones, without duplicates", () => {
+    const requirement = buildRequirement({ acceptanceCriteria: ["Rechnung ist als PDF herunterladbar"] });
+    const normalization = buildNormalization({
+      acceptanceCriteria: ["Rechnung ist als PDF herunterladbar", "Nur der jeweilige Kunde sieht seine eigenen Rechnungen"],
+    });
+    const result = applyNormalizationToRequirement(requirement, normalization);
+    expect(result.acceptanceCriteria).toEqual([
+      "Rechnung ist als PDF herunterladbar",
+      "Nur der jeweilige Kunde sieht seine eigenen Rechnungen",
+    ]);
+  });
+
+  it("merges AI-derived constraints with the user's manually typed ones, without duplicates", () => {
+    const requirement = buildRequirement({ constraints: ["DSGVO-konform"] });
+    const normalization = buildNormalization({ technicalConstraints: ["DSGVO-konform", "Muss ins bestehende Kundenportal passen"] });
+    const result = applyNormalizationToRequirement(requirement, normalization);
+    expect(result.constraints).toEqual(["DSGVO-konform", "Muss ins bestehende Kundenportal passen"]);
+  });
+});
 
 // resolveAutoModel/resolveDefaultModel themselves are exhaustively covered
 // in domain/models.test.ts - what's specific to resolveModelSelection is

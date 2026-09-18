@@ -295,6 +295,7 @@ export class PostgresScoringStore implements ScoringStore {
           missing_information, clarifications, status, resolution_rounds, error_message, created_at, updated_at)
        VALUES ($1, $2, $3::jsonb, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb, $10::jsonb, $11, $12, $13, $14, $15)
        ON CONFLICT (id) DO UPDATE SET
+         requirement = EXCLUDED.requirement,
          normalization = EXCLUDED.normalization,
          known_facts = EXCLUDED.known_facts,
          assumptions = EXCLUDED.assumptions,
