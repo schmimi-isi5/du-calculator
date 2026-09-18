@@ -14,6 +14,7 @@ import {
   CHALLENGE_EVIDENCE_SOURCE_TYPES,
   CHALLENGE_IMPACT_DIRECTIONS,
   CHALLENGE_MAINTAINABILITY_IMPACTS,
+  REQUIREMENT_CHALLENGE_TARGET_FIELDS,
   REQUIREMENT_CHALLENGE_TYPES,
   SOLUTION_SPECIFICITY_LEVELS,
 } from "./requirementChallenge.js";
@@ -530,7 +531,12 @@ export const RequirementChallengeProposalInputSchema = z.object({
   originalText: z
     .string()
     .describe(
-      "The exact source text (or a faithful excerpt) this proposal is about - copy it verbatim from the requirement/acceptance criteria/constraints wherever possible, so the application can locate the matching entry. Never invented.",
+      "The exact source text this proposal is about. If targetField is ACCEPTANCE_CRITERION or CONSTRAINT, this MUST be an exact, character-for-character copy of that specific entry from the Acceptance Criteria / Constraints list shown below - never a paraphrase from the free-text description - so the application can locate and rewrite that exact entry. If targetField is DESCRIPTION, a faithful excerpt of the description prose. Never invented.",
+    ),
+  targetField: z
+    .enum(REQUIREMENT_CHALLENGE_TARGET_FIELDS)
+    .describe(
+      "Which part of the requirement this proposal actually rewrites once accepted: ACCEPTANCE_CRITERION or CONSTRAINT when the concern is about a specific entry in those lists (even if that same idea is also mentioned in the free-text description) - CONSTRAINT for e.g. 'must use the existing vector database'; DESCRIPTION only when there is no corresponding discrete list entry to rewrite. Get this right - it is not just a label, it decides which field the application actually edits.",
     ),
   issue: z.string().describe("In German - what is unclear, assumed, an unnecessary solution constraint, conflicting, reducible scope, a reuse opportunity, or an improvable acceptance criterion."),
   proposedChange: z

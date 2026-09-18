@@ -1281,6 +1281,11 @@ code.file-path {
   -webkit-box-orient: vertical;
 }
 
+.repo-picker-active-summary {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+
 .wizard-single-column {
   max-width: 720px;
   margin: 0 auto;

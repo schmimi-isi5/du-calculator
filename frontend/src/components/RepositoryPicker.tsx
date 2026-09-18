@@ -33,7 +33,42 @@ export function RepositoryPicker({ activeSnapshotId, onUse, refreshToken }: Prop
     };
   }, [refreshToken]);
 
+  // A selection made elsewhere (e.g. after analyzing a fresh URL, which then
+  // shows up here too) should collapse the list to just the active row, same
+  // as picking one from this list directly.
+  useEffect(() => {
+    if (activeSnapshotId) setExpanded(false);
+  }, [activeSnapshotId]);
+
   if (!loading && !error && entries.length === 0) return null;
+
+  const activeEntry = entries.find((e) => e.id === activeSnapshotId) ?? null;
+
+  function handleUse(id: string) {
+    onUse(id);
+    setExpanded(false);
+  }
+
+  if (!expanded && activeEntry) {
+    return (
+      <div className="repo-picker">
+        <div className="repo-picker-row active repo-picker-active-summary">
+          <div className="repo-picker-info">
+            <div className="repo-picker-name">
+              ✓ {activeEntry.repositoryUrl.replace(/^https?:\/\//, "")} @ {activeEntry.branch}
+            </div>
+            <div className="repo-picker-meta">
+              {activeEntry.commitSha?.slice(0, 10)} ·{" "}
+              {activeEntry.analyzedAt ? new Date(activeEntry.analyzedAt).toLocaleString("de-DE") : "–"}
+            </div>
+          </div>
+          <button className="btn secondary" onClick={() => setExpanded(true)}>
+            Repository wechseln
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="repo-picker">
@@ -58,7 +93,7 @@ export function RepositoryPicker({ activeSnapshotId, onUse, refreshToken }: Prop
                 </div>
                 {entry.profileSummary && <div className="repo-picker-summary">{entry.profileSummary}</div>}
               </div>
-              <button className="btn secondary" onClick={() => onUse(entry.id)}>
+              <button className="btn secondary" onClick={() => handleUse(entry.id)}>
                 {entry.id === activeSnapshotId ? "Aktiv" : "Verwenden"}
               </button>
             </div>
