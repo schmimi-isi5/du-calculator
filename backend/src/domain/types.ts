@@ -934,6 +934,8 @@ export interface ClarificationAnswer {
 
 /** Structured extraction of the raw requirement text - no facts invented, only organized. */
 export interface RequirementNormalization {
+  /** In German - a short, specific title for this requirement, derived by the AI so the user never has to type one manually. See api/requirementContextService.ts runContextResolution, which applies this to Requirement.title on the first resolution round. */
+  suggestedTitle: string;
   objective: string;
   businessGoal: string;
   functionalRequirements: string[];

@@ -680,6 +680,7 @@ export interface Clarification {
 }
 
 export interface RequirementNormalization {
+  suggestedTitle: string;
   objective: string;
   businessGoal: string;
   functionalRequirements: string[];

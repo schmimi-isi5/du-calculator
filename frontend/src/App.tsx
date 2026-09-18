@@ -9,6 +9,7 @@ import {
   getScoringResult,
   resolveRequirementContext,
   scoreRequirement,
+  updateRequirementContextRequirement,
 } from "./api/client";
 import { AIUsageDashboard } from "./components/AIUsageDashboard";
 import { Dashboard } from "./components/Dashboard";
@@ -19,6 +20,7 @@ import { RepositoryPanel } from "./components/RepositoryPanel";
 import { RepositorySummaryBar } from "./components/RepositorySummaryBar";
 import { RequirementContextPanel } from "./components/RequirementContextPanel";
 import { RequirementPanel } from "./components/RequirementPanel";
+import { RequirementReviewPanel } from "./components/RequirementReviewPanel";
 import { ResultHero } from "./components/ResultHero";
 import { ScoringPanel } from "./components/ScoringPanel";
 import type { WizardStep } from "./components/WizardSteps";
@@ -62,9 +64,7 @@ export default function App() {
   const [repoRequestError, setRepoRequestError] = useState<string | null>(null);
   const [repoPickerRefreshToken, setRepoPickerRefreshToken] = useState(0);
 
-  const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [acceptanceCriteria, setAcceptanceCriteria] = useState("");
   const [constraints, setConstraints] = useState("");
   const [qualityLevel, setQualityLevel] = useState<QualityLevel>("standard");
   const [model, setModel] = useState<string | null>(null);
@@ -73,6 +73,7 @@ export default function App() {
   const [requirementContext, setRequirementContext] = useState<RequirementContext | null>(null);
   const [contextLoading, setContextLoading] = useState(false);
   const [contextRequestError, setContextRequestError] = useState<string | null>(null);
+  const [reviewSaving, setReviewSaving] = useState(false);
 
   const [scoringResult, setScoringResult] = useState<ScoringResult | null>(null);
   const [scoringLoading, setScoringLoading] = useState(false);
@@ -118,7 +119,7 @@ export default function App() {
     setRequirementContext(null);
     setScoringResult(null);
     try {
-      const result = await createGreenfieldSnapshot(title.trim() || undefined);
+      const result = await createGreenfieldSnapshot();
       setSnapshot(result);
       setRepositoryUrl(result.repositoryUrl);
       setBranch(result.branch);
@@ -177,9 +178,14 @@ export default function App() {
       const context = await resolveRequirementContext(
         snapshot.id,
         {
-          title: title.trim(),
+          // No title/acceptance criteria input anymore - the AI derives both
+          // from the free-text description alone (see
+          // requirementContextService.ts applyNormalizationToRequirement).
+          // "constraints" is the one optional field left for a manual
+          // addition, merged with the AI's own derived ones.
+          title: "",
           description: description.trim(),
-          acceptanceCriteria: linesToList(acceptanceCriteria),
+          acceptanceCriteria: [],
           constraints: linesToList(constraints),
         },
         qualityLevel,
@@ -205,6 +211,23 @@ export default function App() {
       setContextRequestError(err instanceof ApiError ? err.message : "Unerwarteter Fehler.");
     } finally {
       setContextLoading(false);
+    }
+  }
+
+  async function handleUpdateRequirementReview(update: { title: string; acceptanceCriteria: string[]; constraints: string[] }) {
+    if (!requirementContext) return;
+    setReviewSaving(true);
+    setContextRequestError(null);
+    try {
+      const updated = await updateRequirementContextRequirement(requirementContext.id, update);
+      setRequirementContext(updated);
+      // The scored requirement text just changed - a previous scoring result
+      // no longer matches it, same reasoning as an edited assumption above.
+      setScoringResult(null);
+    } catch (err) {
+      setContextRequestError(err instanceof ApiError ? err.message : "Unerwarteter Fehler.");
+    } finally {
+      setReviewSaving(false);
     }
   }
 
@@ -274,8 +297,7 @@ export default function App() {
     }
   }
 
-  const canSubmitRequirement =
-    isRepositoryReady && !contextLoading && title.trim().length > 0 && description.trim().length > 0;
+  const canSubmitRequirement = isRepositoryReady && !contextLoading && description.trim().length > 0;
 
   return (
     <div className="app-shell">
@@ -350,18 +372,14 @@ export default function App() {
                 <RepositorySummaryBar snapshot={snapshot} onChangeRepository={handleChangeRepository} />
 
                 <RequirementPanel
-                  title={title}
                   description={description}
-                  acceptanceCriteria={acceptanceCriteria}
                   constraints={constraints}
                   qualityLevel={qualityLevel}
                   model={model}
                   privacyMode={privacyMode}
                   canSubmit={canSubmitRequirement}
                   loading={contextLoading && !requirementContext}
-                  onChangeTitle={setTitle}
                   onChangeDescription={setDescription}
-                  onChangeAcceptanceCriteria={setAcceptanceCriteria}
                   onChangeConstraints={setConstraints}
                   onChangeQualityLevel={setQualityLevel}
                   onChangeModel={setModel}
@@ -376,6 +394,19 @@ export default function App() {
                     {requirementContext.errorMessage} Der bisherige Wissensstand bleibt unten erhalten -
                     du kannst es erneut versuchen.
                   </div>
+                )}
+
+                {/* Title/acceptance criteria/constraints are already AI-derived at
+                    this point (see requirementContextService.ts
+                    applyNormalizationToRequirement) - this is just the review/edit
+                    step, not a new AI call. Hidden on ERROR since there is nothing
+                    freshly derived to review yet in that case. */}
+                {requirementContext && requirementContext.status !== "ERROR" && (
+                  <RequirementReviewPanel
+                    context={requirementContext}
+                    saving={reviewSaving}
+                    onSave={handleUpdateRequirementReview}
+                  />
                 )}
 
                 {/* Rendered regardless of status (including ERROR): a failed re-resolution

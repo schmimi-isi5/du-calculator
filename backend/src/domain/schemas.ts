@@ -463,6 +463,9 @@ export const MissingInformationOutputSchema = z.object({
 });
 
 export const RequirementNormalizationSchema = z.object({
+  suggestedTitle: z
+    .string()
+    .describe("In German - a short, specific title for this requirement (like a good ticket title) - never generic."),
   objective: z.string(),
   businessGoal: z.string(),
   functionalRequirements: z.array(z.string()),

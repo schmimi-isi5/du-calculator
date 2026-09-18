@@ -79,6 +79,20 @@ async function putJson<T>(path: string, body: unknown): Promise<T> {
   return handleResponse<T>(response);
 }
 
+async function patchJson<T>(path: string, body: unknown): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new ApiError("Backend nicht erreichbar. Läuft der DU Calculator Server?");
+  }
+  return handleResponse<T>(response);
+}
+
 export function analyzeRepository(
   repositoryUrl: string,
   branch: string,
@@ -133,6 +147,20 @@ export function answerClarifications(
     `/api/requirement-context/${encodeURIComponent(contextId)}/clarifications/answer`,
     { answers },
   );
+}
+
+export interface RequirementReviewUpdate {
+  title?: string;
+  acceptanceCriteria?: string[];
+  constraints?: string[];
+}
+
+/** Reviewing/editing the AI-derived title/acceptance criteria/constraints (see RequirementReviewPanel.tsx) - a plain data update, no AI call. */
+export function updateRequirementContextRequirement(
+  contextId: string,
+  update: RequirementReviewUpdate,
+): Promise<RequirementContext> {
+  return patchJson<RequirementContext>(`/api/requirement-context/${encodeURIComponent(contextId)}/requirement`, update);
 }
 
 export function applyAssumptionAction(
